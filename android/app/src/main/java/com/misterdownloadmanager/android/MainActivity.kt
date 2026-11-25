@@ -3,13 +3,17 @@ package com.misterdownloadmanager.android
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import androidx.activity.OnBackPressedCallback
+import androidx.core.content.IntentCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.androidgamesdk.GameActivity
+import java.io.File
 
 /**
  * The app's one activity: GameActivity loads libmdm.so (the manifest's `android.app.lib_name`)
@@ -66,14 +70,41 @@ class MainActivity : GameActivity() {
         links(intent)
     }
 
-    /** The text of a Share, or the address of a link opened with MDM, to the app's Add URL. */
+    /**
+     * The text of a Share, or the address of a link opened with MDM, to the app's Add URL; a
+     * `.torrent` file opened or shared (a content: address), copied into the cache, to its Add
+     * torrent.
+     */
     private fun links(intent: Intent?) {
+        val file = when (intent?.action) {
+            Intent.ACTION_VIEW -> intent.data?.takeIf { it.scheme == "content" || it.scheme == "file" }
+            Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            else -> null
+        }
+        if (file != null) {
+            torrent(file)
+            return
+        }
         val text = when (intent?.action) {
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
             Intent.ACTION_VIEW -> intent.dataString
             else -> null
         }
         if (!text.isNullOrBlank()) nativeLinks(text)
+    }
+
+    /** A shared `.torrent` (16 MB at most) copied into the cache, its path to the app. */
+    private fun torrent(uri: Uri) {
+        try {
+            val dir = File(cacheDir, "shared").apply { mkdirs() }
+            val file = File(dir, "shared-${System.currentTimeMillis()}.torrent")
+            contentResolver.openInputStream(uri)?.use { input ->
+                file.outputStream().use { output -> input.copyTo(output) }
+            }
+            if (file.length() in 1..(16L shl 20)) nativeFile(file.absolutePath) else file.delete()
+        } catch (e: Exception) {
+            Log.w("mdm", "shared torrent", e)
+        }
     }
 
     override fun onDestroy() {
@@ -92,4 +123,6 @@ class MainActivity : GameActivity() {
     private external fun nativeEditorAction()
 
     private external fun nativeLinks(text: String)
+
+    private external fun nativeFile(path: String)
 }

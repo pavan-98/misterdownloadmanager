@@ -129,6 +129,30 @@ adb shell input tap 240 1036
 sleep 3
 adb shell cmd statusbar collapse
 shot 10i-stopped
+# A .torrent opened with MDM (as a file manager opens one): a small one made here, in the app's
+# own files folder (readable without storage permission), opened by a VIEW intent; Add torrent
+# shows what it holds. Back closes it.
+python3 - "$out/test.torrent" <<'PY'
+import hashlib, sys
+data = b"MDM on Android " * 1000
+def be(x):
+    if isinstance(x, int): return b"i%de" % x
+    if isinstance(x, bytes): return b"%d:%s" % (len(x), x)
+    if isinstance(x, str): return be(x.encode())
+    if isinstance(x, dict):
+        return b"d" + b"".join(be(k) + be(v) for k, v in sorted(x.items())) + b"e"
+info = {"name": "android-test.bin", "length": len(data), "piece length": 16384,
+        "pieces": b"".join(hashlib.sha1(data[i:i + 16384]).digest() for i in range(0, len(data), 16384))}
+open(sys.argv[1], "wb").write(be({"announce": "http://10.0.2.2:8090/announce", "info": info}))
+PY
+files=/sdcard/Android/data/$pkg/files
+adb shell mkdir -p "$files"
+adb push "$out/test.torrent" "$files/test.torrent"
+adb shell am start -W -a android.intent.action.VIEW -t application/x-bittorrent \
+  -d "file://$files/test.torrent" -n "$pkg/com.misterdownloadmanager.android.MainActivity"
+shot 10j-torrent
+adb shell input keyevent KEYCODE_BACK
+sleep 2
 # The activity destroyed as the system may destroy it ("Don't keep activities"), then opened
 # again: the app closes (saving its list) and starts again in the same process.
 adb shell settings put global always_finish_activities 1

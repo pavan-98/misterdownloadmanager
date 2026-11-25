@@ -314,3 +314,19 @@ pub extern "system" fn Java_com_misterdownloadmanager_android_DownloadService_na
 ) {
     mdm_app::android::stop_all_asked();
 }
+
+/// `MainActivity.nativeFile(path)`: a `.torrent` another app handed MDM, copied into the app's
+/// cache ([`mdm_app::android::file_given`]).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_misterdownloadmanager_android_MainActivity_nativeFile<'local>(
+    mut env: jni::EnvUnowned<'local>,
+    _this: JObject<'local>,
+    path: JString<'local>,
+) {
+    env.with_env(|env| -> jni::errors::Result<()> {
+        let path = path.try_to_string(env)?;
+        mdm_app::android::file_given(&path);
+        Ok(())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}

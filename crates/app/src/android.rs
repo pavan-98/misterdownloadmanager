@@ -253,6 +253,12 @@ pub fn links_given(text: &str) {
     }
 }
 
+/// A file another app handed MDM (`MainActivity`: a `.torrent` opened or shared), copied into
+/// the app's cache: Add torrent opens for it, as for one given on the desktop's command line.
+pub fn file_given(path: &str) {
+    hand_link(path.to_owned());
+}
+
 fn hand_link(url: String) {
     let mut links = LINKS.lock().unwrap_or_else(|e| e.into_inner());
     let sent = links.1.as_ref().is_some_and(|(tx, wake)| {
