@@ -482,15 +482,10 @@ fn phone_list(
                     at.max.y - 0.5,
                     egui::Stroke::new(1.0, colors().list_grid),
                 );
-                // A finger held still sends nothing, and egui sees a long press only in a frame
-                // drawn while it is down: frames while a row is held.
-                if r.is_pointer_button_down_on() {
-                    ui.ctx()
-                        .request_repaint_after(std::time::Duration::from_millis(100));
-                }
+                let held = held_long(ui, &r);
                 if r.double_clicked() {
                     touch.opened = Some(i);
-                } else if r.secondary_clicked() || r.long_touched() {
+                } else if r.secondary_clicked() || held {
                     let p = r.interact_pointer_pos().unwrap_or(at.center());
                     touch.menu = Some((i, p));
                     touch.tapped = Some((i, true));
@@ -500,6 +495,39 @@ fn phone_list(
             }
         });
     touch
+}
+
+/// How long a row is held still before its menu opens: Android's long press.
+const LONG_PRESS: f64 = 0.5;
+
+/// Whether `r` has just been held still for [`LONG_PRESS`] (true once per press). MDM's own,
+/// not egui's `long_touched`: that needs the press reported as a touch and a frame drawn between
+/// 0.8 s and the release, and neither held on the emulator; this one counts any press (a mouse's
+/// too, in the desktop's preview) and asks for the frames it needs.
+fn held_long(ui: &Ui, r: &egui::Response) -> bool {
+    let key = r.id.with("held");
+    if !r.is_pointer_button_down_on() {
+        ui.data_mut(|d| d.remove::<(f64, bool)>(key));
+        return false;
+    }
+    let now = ui.input(|i| i.time);
+    let (start, fired) = ui
+        .data(|d| d.get_temp::<(f64, bool)>(key))
+        .unwrap_or((now, false));
+    // Moved away from where it pressed: a scroll, not a long press.
+    let moved = ui.input(|i| {
+        i.pointer
+            .press_origin()
+            .zip(i.pointer.latest_pos())
+            .is_some_and(|(a, b)| a.distance(b) > 8.0)
+    });
+    let fire = !fired && !moved && now - start >= LONG_PRESS;
+    ui.data_mut(|d| d.insert_temp(key, (start, fired || fire || moved)));
+    if !fired && !moved {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(50));
+    }
+    fire
 }
 
 /// `text` cut with "…" to fit `width` in `font`.
