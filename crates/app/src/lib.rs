@@ -660,6 +660,11 @@ fn app() -> eframe::Result {
         #[cfg(target_os = "linux")]
         unix::set_main_window(cc);
         scale::start(&cc.egui_ctx, z);
+        // The phone's layout looked at on a desktop (MDM_PHONE): its dialogs in the window, as
+        // Android has them (one window), not windows of their own.
+        if phone {
+            cc.egui_ctx.set_embed_viewports(true);
+        }
         let _ = window.set(cc.egui_ctx.clone());
         clipboard::wake(&cc.egui_ctx);
         renderer::test_slow_start();
