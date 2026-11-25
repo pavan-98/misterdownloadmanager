@@ -92,6 +92,11 @@ impl RuntimeProbe {
 /// Whether to offer the helpers at this start: never asked, and one of them is missing (ffmpeg
 /// counts only where MDM can install one, Windows; elsewhere the system's is used).
 pub fn worth_asking() -> bool {
+    // Android: ffmpeg, Python and QuickJS come in the app (mdm-tools' android.rs), and yt-dlp is
+    // offered the first time a video is downloaded: nothing to ask at the first start.
+    if cfg!(target_os = "android") {
+        return false;
+    }
     let Some(dir) = mdm_tools::tools_dir() else {
         return false;
     };
