@@ -67,6 +67,8 @@ jobs:
           api-level: 34
           arch: x86_64
           target: google_apis
+          # A phone's screen (1080 × 2400 at 420 dpi), not the emulator's small default.
+          profile: pixel_6
           disable-animations: true
           script: bash tools/android/try.sh
       - name: Screenshots and the device's log

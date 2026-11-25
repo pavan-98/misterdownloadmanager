@@ -117,3 +117,13 @@ fn cache_dir(env: &mut Env, context: &JObject) -> jni::errors::Result<PathBuf> {
     let path = env.cast_local::<JString>(path)?;
     Ok(PathBuf::from(path.try_to_string(env)?))
 }
+
+/// `MainActivity.nativeBack()`: the system's back gesture or button reached the activity's back
+/// dispatcher (Android 13 and later send no key for it); the app closes the window in front.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_misterdownloadmanager_android_MainActivity_nativeBack(
+    _env: *mut jni::sys::JNIEnv,
+    _this: jni::sys::jobject,
+) {
+    mdm_app::android::back_pressed();
+}

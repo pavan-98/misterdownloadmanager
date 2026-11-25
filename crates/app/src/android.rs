@@ -106,19 +106,133 @@ pub fn run(
             crate::scale::start(&cc.egui_ctx, z);
             let _ = window.set(cc.egui_ctx.clone());
             crate::clipboard::wake(&cc.egui_ctx);
-            Ok(Box::new(crate::app::App::new(
+            let _ = CONTEXT.set(cc.egui_ctx.clone());
+            Ok(Box::new(OnAndroid(crate::app::App::new(
                 &cc.egui_ctx,
                 handle,
                 commands,
                 sink,
                 loaded,
                 crate::Start::Shown,
-            )))
+            ))))
         }),
     );
     tracing::info!("the activity ended");
     mdm_crash::logs::flush(std::time::Duration::from_secs(2));
     result
+}
+
+/// The app's window, for what reaches it from Java between frames ([`back_pressed`]).
+#[cfg(target_os = "android")]
+static CONTEXT: OnceLock<egui::Context> = OnceLock::new();
+
+/// Back gestures and Back presses Java has seen since the last frame ([`back_pressed`]).
+#[cfg(target_os = "android")]
+static BACKS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Back, as the system's back gesture or button (the activity's back dispatcher, which Android
+/// 13 and later use instead of a key): the next frame gets it as Esc ([`OnAndroid`]).
+#[cfg(target_os = "android")]
+pub fn back_pressed() {
+    BACKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if let Some(ctx) = CONTEXT.get() {
+        ctx.request_repaint();
+    }
+}
+
+/// The app as eframe runs it on Android: Back is Esc, which closes the window in front as on the
+/// desktop. A key's Back (a keyboard's, an emulator's KEYCODE_BACK) comes to the window as
+/// winit's BrowserBack; the gesture's through [`back_pressed`].
+#[cfg(target_os = "android")]
+struct OnAndroid(crate::app::App);
+
+#[cfg(target_os = "android")]
+impl eframe::App for OnAndroid {
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        eframe::App::logic(&mut self.0, ctx, frame);
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        eframe::App::ui(&mut self.0, ui, frame);
+    }
+
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+        for event in &mut raw.events {
+            if let egui::Event::Key { key, .. } = event
+                && *key == egui::Key::BrowserBack
+            {
+                *key = egui::Key::Escape;
+            }
+        }
+        let backs = BACKS.swap(0, std::sync::atomic::Ordering::Relaxed);
+        for pressed in (0..backs).flat_map(|_| [true, false]) {
+            raw.events.push(egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
+    }
+}
+
+/// One of Android's font families (/system/etc/fonts.xml): its name (`sans-serif`…) or the
+/// languages it is for (`und-Arab`, `zh-Hans`, `ja`…), and its regular font's file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FontFamily {
+    pub name: Option<String>,
+    pub langs: Vec<String>,
+    pub file: std::path::PathBuf,
+}
+
+/// Android's font families, in the order the system falls back through them (fonts.xml's own),
+/// read once. Empty where there is no fonts.xml (the tests' Linux).
+pub fn font_families() -> &'static [FontFamily] {
+    static FAMILIES: OnceLock<Vec<FontFamily>> = OnceLock::new();
+    FAMILIES.get_or_init(|| {
+        let xml = std::fs::read_to_string("/system/etc/fonts.xml").unwrap_or_default();
+        parse_fonts_xml(&xml, std::path::Path::new("/system/fonts"))
+    })
+}
+
+/// fonts.xml's families: each one's regular upright font (weight 400, else its first), in
+/// `dir`. A family whose file isn't named is left out.
+pub fn parse_fonts_xml(xml: &str, dir: &std::path::Path) -> Vec<FontFamily> {
+    let Ok(doc) = roxmltree::Document::parse(xml) else {
+        return Vec::new();
+    };
+    doc.root_element()
+        .children()
+        .filter(|n| n.has_tag_name("family"))
+        .filter_map(|family| {
+            let fonts: Vec<_> = family
+                .children()
+                .filter(|n| n.has_tag_name("font") && n.attribute("style") != Some("italic"))
+                .collect();
+            let font = fonts
+                .iter()
+                .find(|f| f.attribute("weight").is_none_or(|w| w == "400"))
+                .or(fonts.first())?;
+            // The file is the font element's own text (an <axis> may follow it).
+            let file = font
+                .children()
+                .filter(|n| n.is_text())
+                .filter_map(|n| n.text())
+                .map(str::trim)
+                .find(|t| !t.is_empty())?;
+            Some(FontFamily {
+                name: family.attribute("name").map(str::to_owned),
+                langs: family
+                    .attribute("lang")
+                    .unwrap_or_default()
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect(),
+                file: dir.join(file),
+            })
+        })
+        .collect()
 }
 
 /// The default browser, for the User-Agent of links added by hand: none known here.
@@ -296,5 +410,51 @@ mod tests {
         assert_eq!(*fake.awake.lock().unwrap(), None);
 
         assert!(default_browser().is_none());
+    }
+
+    /// fonts.xml as Android 14 writes it: named families, language families (one with two
+    /// languages, one variable font with axes), italics passed over.
+    #[test]
+    fn fonts_xml_is_read_in_its_order() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<familyset version="23">
+    <family name="sans-serif">
+        <font weight="100" style="normal">Roboto-Regular.ttf
+            <axis tag="wght" stylevalue="100" />
+        </font>
+        <font weight="400" style="normal">Roboto-Regular.ttf
+            <axis tag="wght" stylevalue="400" />
+        </font>
+        <font weight="400" style="italic">Roboto-Italic.ttf</font>
+    </family>
+    <alias name="arial" to="sans-serif" />
+    <family lang="und-Arab" variant="elegant">
+        <font weight="400" style="normal">NotoNaskhArabic-Regular.ttf</font>
+        <font weight="700" style="normal">NotoNaskhArabic-Bold.ttf</font>
+    </family>
+    <family lang="zh-Hans">
+        <font weight="400" style="normal" index="2">NotoSansCJK-Regular.ttc</font>
+    </family>
+    <family lang="und-Zsye und-Zsym">
+        <font weight="400" style="normal">NotoColorEmoji.ttf</font>
+    </family>
+    <family lang="und-Thai"><font style="italic">ItalicOnly.ttf</font></family>
+</familyset>"#;
+        let dir = std::path::Path::new("/system/fonts");
+        let got = parse_fonts_xml(xml, dir);
+        let files: Vec<_> = got.iter().map(|f| f.file.clone()).collect();
+        assert_eq!(
+            files,
+            [
+                dir.join("Roboto-Regular.ttf"),
+                dir.join("NotoNaskhArabic-Regular.ttf"),
+                dir.join("NotoSansCJK-Regular.ttc"),
+                dir.join("NotoColorEmoji.ttf"),
+            ]
+        );
+        assert_eq!(got[0].name.as_deref(), Some("sans-serif"));
+        assert_eq!(got[1].langs, ["und-Arab"]);
+        assert_eq!(got[3].langs, ["und-Zsye", "und-Zsym"]);
+        assert!(parse_fonts_xml("not xml", dir).is_empty());
     }
 }

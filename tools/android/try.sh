@@ -6,19 +6,23 @@ out=try-out
 mkdir -p "$out"
 pkg=com.misterdownloadmanager.android.debug
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb shell wm size > "$out/screen.txt"
+adb shell wm density >> "$out/screen.txt"
 adb logcat -c
 adb shell am start -W -n "$pkg/com.misterdownloadmanager.android.MainActivity"
-shot() { adb exec-out screencap -p > "$out/$1.png"; }
-sleep 20
+shot() { sleep 3; adb exec-out screencap -p > "$out/$1.png"; }
+sleep 25
 shot 01-start
-adb shell dumpsys window | grep -E "mCurrentFocus|mFocusedApp" > "$out/focus.txt" || true
-# A tap in the middle (the language window's list), then back.
-adb shell input tap 540 1200
-sleep 3
-shot 02-tap
+# Back: the language window closes (Back is Esc), the main window shows.
 adb shell input keyevent KEYCODE_BACK
-sleep 3
-shot 03-back
+shot 02-back
+# A tap on the toolbar's first button (Add URL), at the top left under the status bar.
+adb shell input tap 80 260
+shot 03-add-url
+adb shell input text "https://example.com/file.zip"
+shot 04-typed
+adb shell input keyevent KEYCODE_BACK
+shot 05-back-again
 adb shell pidof "$pkg" > "$out/pid.txt" || echo "not running" > "$out/pid.txt"
 adb logcat -d > "$out/logcat.txt"
 adb shell run-as "$pkg" cat files/mdm/logs/mdm.log > "$out/mdm.log" 2>/dev/null || true
