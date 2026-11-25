@@ -1023,11 +1023,12 @@ impl AddUrl {
             self.fill_from_clipboard(&clip);
         }
         self.follow_site_login(site_login);
+        let at = AddUrlLayout::for_window(ctx);
         window(
             ctx,
             "add-url",
             "Enter new address to download",
-            [560.0, 93.0],
+            at.client,
             false,
             winui::BG(),
             |ui, o| {
@@ -1035,12 +1036,12 @@ impl AddUrl {
                 // i18n: noun: the web address (URL)
                 winui::text(
                     &p,
-                    o.x + 12.0,
-                    o.y + 25.0,
+                    o.x + at.address_label.x,
+                    o.y + at.address_label.y,
                     crate::i18n::t("Address"),
                     winui::TEXT(),
                 );
-                let addr_rc = r(o, 68.0, 11.0, 396.0, 21.0);
+                let addr_rc = at.address.translate(o.to_vec2());
                 let addr = winui::combo_edit(ui, addr_rc, &mut self.address);
                 // An error about the address goes once it is edited.
                 if addr.changed() {
@@ -1056,9 +1057,9 @@ impl AddUrl {
                     self.list_open = !self.list_open;
                 }
                 // Up / Down step through the addresses entered before.
-                let at = self.history.iter().position(|h| *h == self.address.trim());
+                let at_history = self.history.iter().position(|h| *h == self.address.trim());
                 if !self.list_open
-                    && let Some(i) = winui::history_keys(ui, &addr, self.history.len(), at)
+                    && let Some(i) = winui::history_keys(ui, &addr, self.history.len(), at_history)
                 {
                     self.address = self.history[i].clone();
                     self.error = None;
@@ -1084,48 +1085,50 @@ impl AddUrl {
                 let _ = &addr;
                 let enter = winui::enter_pressed(ui);
 
-                winui::group_box(
-                    &p,
-                    r(o, 11.0, 45.0, 453.0, 40.0),
-                    Some(winui::caption_gap(
+                if let Some(group) = at.group {
+                    winui::group_box(
                         &p,
-                        o.x + 20.0,
-                        o.x + 124.0,
-                        "Use authorization",
-                        false,
-                    )),
-                );
-                winui::checkbox(
-                    ui,
-                    o + vec2(20.0, 39.0),
-                    &mut self.auth,
-                    "Use authorization",
-                    true,
-                );
+                        group.translate(o.to_vec2()),
+                        Some(winui::caption_gap(
+                            &p,
+                            o.x + 20.0,
+                            o.x + 124.0,
+                            "Use authorization",
+                            false,
+                        )),
+                    );
+                }
+                winui::checkbox(ui, o + at.check, &mut self.auth, "Use authorization", true);
                 let label = if self.auth {
                     winui::TEXT()
                 } else {
                     winui::TEXT_DISABLED()
                 };
                 // i18n: noun: the user name and password section
-                winui::text(&p, o.x + 84.0, o.y + 69.0, crate::i18n::t("Login"), label);
+                winui::text(
+                    &p,
+                    o.x + at.login_label.x,
+                    o.y + at.login_label.y,
+                    crate::i18n::t("Login"),
+                    label,
+                );
                 winui::edit(
                     ui,
-                    r(o, 116.0, 55.0, 117.0, 23.0),
+                    at.login.translate(o.to_vec2()),
                     &mut self.login,
                     self.auth,
                     false,
                 );
                 winui::text(
                     &p,
-                    o.x + 289.0,
-                    o.y + 69.0,
+                    o.x + at.password_label.x,
+                    o.y + at.password_label.y,
                     crate::i18n::t("Password"),
                     label,
                 );
                 winui::edit(
                     ui,
-                    r(o, 342.0, 55.0, 113.0, 23.0),
+                    at.password.translate(o.to_vec2()),
                     &mut self.password,
                     self.auth,
                     true,
@@ -1133,7 +1136,7 @@ impl AddUrl {
 
                 let ok = winui::button(
                     ui,
-                    r(o, 475.0, 12.0, 79.0, 19.0),
+                    at.ok.translate(o.to_vec2()),
                     "OK",
                     ButtonKind::Default,
                     false,
@@ -1142,7 +1145,7 @@ impl AddUrl {
                 .clicked();
                 let cancel = winui::button(
                     ui,
-                    r(o, 475.0, 40.0, 79.0, 21.0),
+                    at.cancel.translate(o.to_vec2()),
                     "Cancel",
                     ButtonKind::Normal,
                     false,
@@ -1151,26 +1154,27 @@ impl AddUrl {
                 .clicked();
                 if let Some(e) = &self.error {
                     let red = winui::ERROR();
+                    let (x, y, right) = at.error;
                     // Ends before the OK / Cancel buttons; whole on hover when cut.
                     // On the group box's top line, over a strip of the dialog's colour (as a
                     // caption sits on its line), not struck through by it.
-                    let w = winui::text_width(&p, e).min(465.0 - 140.0) + 6.0;
+                    let w = winui::text_width(&p, e).min(right - x) + 6.0;
                     winui::fill_l(
                         &p,
-                        o.x + 137.0,
-                        o.y + 39.0,
-                        o.x + 137.0 + w,
-                        o.y + 52.0,
+                        o.x + x - 3.0,
+                        o.y + y - 10.0,
+                        o.x + x - 3.0 + w,
+                        o.y + y + 3.0,
                         winui::BG(),
                     );
                     winui::fit(
                         ui,
                         &p,
-                        o.x + 140.0,
-                        o.y + 49.0,
+                        o.x + x,
+                        o.y + y,
                         e,
                         red,
-                        o.x + 465.0,
+                        o.x + right,
                         "add-url-error",
                     );
                 }
@@ -1192,6 +1196,72 @@ impl AddUrl {
                 Outcome::Open
             },
         )
+    }
+}
+
+/// Where Add URL's parts are, from its client's top left: the desktop's window (IDM's, client
+/// 560 × 93), or on a phone one column as wide as the screen (phone.rs).
+struct AddUrlLayout {
+    client: [f32; 2],
+    /// Labels: where their text's baseline starts.
+    address_label: Pos2,
+    address: egui::Rect,
+    /// The "Use authorization" box around the sign-in (none on a phone).
+    group: Option<egui::Rect>,
+    check: egui::Vec2,
+    login_label: Pos2,
+    login: egui::Rect,
+    password_label: Pos2,
+    password: egui::Rect,
+    ok: egui::Rect,
+    cancel: egui::Rect,
+    /// The error's baseline start and where it must end.
+    error: (f32, f32, f32),
+}
+
+impl AddUrlLayout {
+    fn for_window(ctx: &egui::Context) -> Self {
+        if crate::app::phone::active(ctx) {
+            return Self::phone(ctx.content_rect().width());
+        }
+        let o = Pos2::ZERO;
+        AddUrlLayout {
+            client: [560.0, 93.0],
+            address_label: egui::pos2(12.0, 25.0),
+            address: r(o, 68.0, 11.0, 396.0, 21.0),
+            group: Some(r(o, 11.0, 45.0, 453.0, 40.0)),
+            check: vec2(20.0, 39.0),
+            login_label: egui::pos2(84.0, 69.0),
+            login: r(o, 116.0, 55.0, 117.0, 23.0),
+            password_label: egui::pos2(289.0, 69.0),
+            password: r(o, 342.0, 55.0, 113.0, 23.0),
+            ok: r(o, 475.0, 12.0, 79.0, 19.0),
+            cancel: r(o, 475.0, 40.0, 79.0, 21.0),
+            error: (140.0, 49.0, 465.0),
+        }
+    }
+
+    /// One column `width` wide: each label over its box, the boxes and buttons tall enough for
+    /// a finger, OK and Cancel at the bottom.
+    fn phone(width: f32) -> Self {
+        let o = Pos2::ZERO;
+        let (pad, w) = (16.0, width - 32.0);
+        let field = 36.0;
+        let button = (w - 12.0) / 2.0;
+        AddUrlLayout {
+            client: [width, 330.0],
+            address_label: egui::pos2(pad, 24.0),
+            address: r(o, pad, 32.0, w, field),
+            group: None,
+            check: vec2(pad, 112.0),
+            login_label: egui::pos2(pad, 150.0),
+            login: r(o, pad, 158.0, w, field),
+            password_label: egui::pos2(pad, 214.0),
+            password: r(o, pad, 222.0, w, field),
+            ok: r(o, pad + button + 12.0, 278.0, button, 40.0),
+            cancel: r(o, pad, 278.0, button, 40.0),
+            error: (pad, 92.0, pad + w),
+        }
     }
 }
 
