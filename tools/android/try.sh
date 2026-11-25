@@ -33,8 +33,9 @@ top=$(( $(dp 24) + $(dp 28) ))
 bottom=$(( 2400 - $(dp 48) - $(dp 28) ))
 sleep 25
 shot 01-start
-# Back: the language window closes (Back is Esc).
-adb shell input keyevent KEYCODE_BACK
+# The language page's x (its top bar's first button) closes it. (Back would first hide the
+# keyboard its Search box opens.)
+adb shell input tap $(dp 28) $top
 shot 02-main
 # The drawer (the top bar's first button), then Back closes it.
 adb shell input tap $(dp 28) $top
