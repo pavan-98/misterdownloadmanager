@@ -5,6 +5,9 @@
 //!
 //! Built on this system too with the `android-core` feature, so its tests run here:
 //! `cargo test -p mdm-app --features android-core --lib android`.
+//!
+//! [`run`] is the app on Android: the desktop's start-up (lib.rs `app`) without what a phone has
+//! no use for, and eframe's window on the Android app's activity.
 
 use std::sync::{Arc, OnceLock};
 
@@ -37,6 +40,85 @@ pub fn set_host(host: Arc<dyn Host>) -> bool {
 
 fn host() -> Option<&'static Arc<dyn Host>> {
     HOST.get()
+}
+
+/// The app on Android, until its activity ends: `crates/android`'s `android_main` calls it once
+/// the data folder is set (`mdm_ipc::set_data_dir`) and the [`Host`] given. As the desktop's
+/// start-up (lib.rs `app`), without the crash monitor's process (Android starts no second copy of
+/// the app), the command line, the hand-over to a running copy (one process holds the activity)
+/// and the notification-area icon.
+#[cfg(target_os = "android")]
+pub fn run(
+    android_app: egui_winit::winit::platform::android::activity::AndroidApp,
+) -> eframe::Result {
+    let no_start = |why: &str| eframe::Error::AppCreation(why.to_owned().into());
+    let data = mdm_ipc::data_dir().ok_or_else(|| no_start("no data folder"))?;
+    std::fs::create_dir_all(&data).map_err(|e| no_start(&e.to_string()))?;
+    let _ = mdm_ipc::private_dir(&data);
+    // Panics in crash.log, as on the desktop (and on to the default hook: logcat).
+    let default_hook = std::panic::take_hook();
+    let at = data.clone();
+    std::panic::set_hook(Box::new(move |info| {
+        let bt = std::backtrace::Backtrace::force_capture();
+        let _ = std::fs::write(at.join("crash.log"), format!("{info}\n\n{bt}"));
+        default_hook(info);
+    }));
+    // Android may start the activity again in the same process: the list is the first run's
+    // until it has ended.
+    let Some(_instance) = mdm_ipc::instance_lock() else {
+        return Err(no_start("the app is already running in this process"));
+    };
+    crate::clock::start();
+    crate::theme::prepare_fonts();
+    let (tx, commands) = std::sync::mpsc::channel();
+    let window: Arc<OnceLock<egui::Context>> = Default::default();
+    let wake = window.clone();
+    let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        if let Some(ctx) = wake.get() {
+            ctx.request_repaint_of(egui::ViewportId::ROOT);
+        }
+    });
+    let sink = mdm_ipc::Sink::new(tx.clone(), wake.clone());
+    let _ = mdm_ipc::serve(tx, move || wake());
+    let rt = tokio::runtime::Runtime::new().map_err(|e| no_start(&e.to_string()))?;
+    let handle = rt.handle().clone();
+    let loaded = crate::store::load();
+    let z = crate::scale::startup(loaded.settings.interface_size);
+    mdm_crash::logs::init(&data, mdm_crash::logs::APP);
+    tracing::info!(
+        "Mister Download Manager {} ({}) starting on Android",
+        crate::help::VERSION,
+        crate::help::COMMIT
+    );
+    crate::theme::init_smooth_text(loaded.settings.smooth_text);
+    crate::theme::set_ui_font(loaded.settings.interface_font.clone(), false, false);
+    crate::theme::init_text_size(loaded.settings.interface_text_size);
+    let _ = loaded.settings.for_disk();
+    let options = eframe::NativeOptions {
+        android_app: Some(android_app),
+        viewport: crate::window_builder().with_title(crate::MAIN_TITLE),
+        ..Default::default()
+    };
+    let result = eframe::run_native(
+        crate::APP_ID,
+        options,
+        Box::new(move |cc| {
+            crate::scale::start(&cc.egui_ctx, z);
+            let _ = window.set(cc.egui_ctx.clone());
+            crate::clipboard::wake(&cc.egui_ctx);
+            Ok(Box::new(crate::app::App::new(
+                &cc.egui_ctx,
+                handle,
+                commands,
+                sink,
+                loaded,
+                crate::Start::Shown,
+            )))
+        }),
+    );
+    tracing::info!("the activity ended");
+    mdm_crash::logs::flush(std::time::Duration::from_secs(2));
+    result
 }
 
 /// The default browser, for the User-Agent of links added by hand: none known here.
