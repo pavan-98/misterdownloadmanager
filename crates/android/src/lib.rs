@@ -283,3 +283,19 @@ pub extern "system" fn Java_com_misterdownloadmanager_android_MainActivity_nativ
 ) {
     mdm_app::android::editor_action();
 }
+
+/// `MainActivity.nativeLinks(text)`: text another app handed MDM (Share, or a link opened with
+/// it); its links go to the app ([`mdm_app::android::links_given`]).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_misterdownloadmanager_android_MainActivity_nativeLinks<'local>(
+    mut env: jni::EnvUnowned<'local>,
+    _this: JObject<'local>,
+    text: JString<'local>,
+) {
+    env.with_env(|env| -> jni::errors::Result<()> {
+        let text = text.try_to_string(env)?;
+        mdm_app::android::links_given(&text);
+        Ok(())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}

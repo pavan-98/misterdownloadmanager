@@ -1,6 +1,7 @@
 package com.misterdownloadmanager.android
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -20,6 +21,8 @@ class MainActivity : GameActivity() {
         // The keystore, alarms, locks and the downloads' service, for the app (libmdm.so).
         Platform.init(this)
         nativeHost(Platform)
+        // Started for a link (Share, or one opened with MDM): it goes to the app.
+        links(intent)
         // Android 13 and later show the downloads' notification only with this permission;
         // Android 10 and older write to the Download folder only with storage's.
         val wanted = when {
@@ -56,6 +59,23 @@ class MainActivity : GameActivity() {
         super.onEditorAction(action)
     }
 
+    /** A link handed over while the app runs (singleTask: the activity on screen gets it). */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        links(intent)
+    }
+
+    /** The text of a Share, or the address of a link opened with MDM, to the app's Add URL. */
+    private fun links(intent: Intent?) {
+        val text = when (intent?.action) {
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+            Intent.ACTION_VIEW -> intent.dataString
+            else -> null
+        }
+        if (!text.isNullOrBlank()) nativeLinks(text)
+    }
+
     override fun onDestroy() {
         // GameActivity's destruction waits for the app's thread to end: the app is told first,
         // and closes (saving the list, as Exit does).
@@ -70,4 +90,6 @@ class MainActivity : GameActivity() {
     private external fun nativeEnding()
 
     private external fun nativeEditorAction()
+
+    private external fun nativeLinks(text: String)
 }

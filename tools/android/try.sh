@@ -106,6 +106,14 @@ adb shell input keyevent KEYCODE_BACK
 shot 10e-options-again
 adb shell input keyevent KEYCODE_BACK
 sleep 2
+# A link shared to MDM (as a browser's Share does): Download File Info opens for it; Enter starts it.
+adb shell am start -W -a android.intent.action.SEND -t text/plain \
+  --es android.intent.extra.TEXT "'Look at this: http://10.0.2.2:8090/gen/10M/shared.bin?rate=1M.'" \
+  -n "$pkg/com.misterdownloadmanager.android.MainActivity"
+shot 10f-shared
+adb shell input keyevent KEYCODE_ENTER
+sleep 8
+shot 10g-shared-done
 # The activity destroyed as the system may destroy it ("Don't keep activities"), then opened
 # again: the app closes (saving its list) and starts again in the same process.
 adb shell settings put global always_finish_activities 1

@@ -107,6 +107,9 @@ pub fn run(
         }
     });
     let sink = mdm_ipc::Sink::new(tx.clone(), wake.clone());
+    // Links other apps hand over (Share, a link opened with MDM) reach the app from here on,
+    // those that came before it started first.
+    links_channel(Some((tx.clone(), wake.clone())));
     let _ = mdm_ipc::serve(tx, move || wake());
     let rt = tokio::runtime::Runtime::new().map_err(|e| no_start(&e.to_string()))?;
     let handle = rt.handle().clone();
@@ -157,6 +160,7 @@ pub fn run(
             }))
         }),
     );
+    links_channel(None);
     tracing::info!("the activity ended");
     mdm_crash::logs::flush(std::time::Duration::from_secs(2));
     result
@@ -169,6 +173,74 @@ static CONTEXT: OnceLock<egui::Context> = OnceLock::new();
 /// Back gestures and Back presses Java has seen since the last frame ([`back_pressed`]).
 #[cfg(target_os = "android")]
 static BACKS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Where links other apps hand over go ([`links_given`]): the app's command channel and what
+/// wakes it, while the app runs; the links that came while it didn't.
+type LinkChannel = (
+    std::sync::mpsc::Sender<mdm_ipc::Incoming>,
+    Arc<dyn Fn() + Send + Sync>,
+);
+static LINKS: std::sync::Mutex<(Vec<String>, Option<LinkChannel>)> =
+    std::sync::Mutex::new((Vec::new(), None));
+
+/// The app's command channel for handed-over links (None when the app ends); the links that
+/// waited for it go now.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+fn links_channel(channel: Option<LinkChannel>) {
+    let mut links = LINKS.lock().unwrap_or_else(|e| e.into_inner());
+    links.1 = channel;
+    let waiting = std::mem::take(&mut links.0);
+    drop(links);
+    for url in waiting {
+        hand_link(url);
+    }
+}
+
+/// Text another app handed MDM (`MainActivity`: Share, or a link opened with MDM): each link in
+/// it goes to the app as the desktop's command line gives one (Download File Info opens for it).
+/// Before the app runs, they wait for it.
+pub fn links_given(text: &str) {
+    for url in links_in(text) {
+        hand_link(url);
+    }
+}
+
+fn hand_link(url: String) {
+    let mut links = LINKS.lock().unwrap_or_else(|e| e.into_inner());
+    let sent = links.1.as_ref().is_some_and(|(tx, wake)| {
+        let cmd = mdm_ipc::Command {
+            url: Some(url.clone()),
+            ..Default::default()
+        };
+        let sent = tx.send(mdm_ipc::Incoming { cmd, reply: None }).is_ok();
+        if sent {
+            wake();
+        }
+        sent
+    });
+    if !sent {
+        links.0.push(url);
+    }
+}
+
+/// The links in `text`, as a page's shared text has them ("Look at this: https://…"): web, FTP
+/// and magnet addresses, in order, without the punctuation a sentence puts after them.
+pub fn links_in(text: &str) -> Vec<String> {
+    const SCHEMES: [&str; 4] = ["http://", "https://", "ftp://", "magnet:?"];
+    let mut out: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        let word = word.trim_start_matches(['(', '<', '"', '\'']);
+        let lower = word.to_ascii_lowercase();
+        if !SCHEMES.iter().any(|s| lower.starts_with(s)) {
+            continue;
+        }
+        let link = word.trim_end_matches(['.', ',', ';', ':', '!', '?', ')', '>', '"', '\'']);
+        if link.len() > 9 && !out.iter().any(|l| l == link) {
+            out.push(link.to_owned());
+        }
+    }
+    out
+}
 
 /// The soft keyboard's action key (Done, Go) since the last frame ([`editor_action`]).
 #[cfg(target_os = "android")]
@@ -635,6 +707,27 @@ mod tests {
         );
 
         assert!(default_browser().is_none());
+    }
+
+    /// Shared text's links: in order, once each, without a sentence's punctuation.
+    #[test]
+    fn links_are_found_in_shared_text() {
+        assert_eq!(
+            links_in("Look at this: https://example.com/a.zip, and (http://x.org/b.iso)."),
+            ["https://example.com/a.zip", "http://x.org/b.iso"]
+        );
+        assert_eq!(
+            links_in("magnet:?xt=urn:btih:abc&dn=x\nftp://h/f.bin https://example.com/a.zip"),
+            ["magnet:?xt=urn:btih:abc&dn=x", "ftp://h/f.bin"]
+                .into_iter()
+                .chain(["https://example.com/a.zip"])
+                .collect::<Vec<_>>()
+        );
+        assert!(links_in("no links here, just www.example.com").is_empty());
+        assert_eq!(
+            links_in("HTTPS://Example.com/x https://Example.com/x"),
+            ["HTTPS://Example.com/x", "https://Example.com/x"]
+        );
     }
 
     /// The soft keyboard's text, frame to frame: typed on, corrected, replaced.
