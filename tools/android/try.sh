@@ -11,6 +11,8 @@ until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep
 sleep 30
 adb shell input keyevent KEYCODE_HOME
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+# The notification permission given (its prompt would be in front of the app).
+adb shell pm grant "$pkg" android.permission.POST_NOTIFICATIONS
 # The install's broadcasts settle first (one arriving after the start restarts the activity).
 sleep 20
 adb shell wm size > "$out/screen.txt"
