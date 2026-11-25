@@ -162,6 +162,43 @@ adb shell am start -W -n "$pkg/com.misterdownloadmanager.android.MainActivity"
 sleep 15
 shot 11-reopened
 adb shell settings put global always_finish_activities 0
+# The same screens in a long language and dark (de), then right to left (ar): the app stopped,
+# its saved settings changed, started again.
+looks() { # language, always dark (True/False), right to left (0/1), name
+  adb shell am force-stop "$pkg"
+  adb shell run-as "$pkg" cat files/mdm/downloads.json > "$out/store.json"
+  python3 - "$out/store.json" "$1" "$2" <<'PY'
+import json, sys
+path, lang, dark = sys.argv[1], sys.argv[2], sys.argv[3] == "True"
+store = json.load(open(path))
+s = store["settings"]
+s["language"], s["language_asked"], s["always_dark"] = lang, True, dark
+json.dump(store, open(path, "w"))
+PY
+  adb shell "run-as $pkg sh -c 'cat > files/mdm/downloads.json'" < "$out/store.json"
+  adb shell am start -W -n "$pkg/com.misterdownloadmanager.android.MainActivity"
+  sleep 15
+  shot "$4-main"
+  # The top bar's first and last buttons: mirrored right to left.
+  local first=$(dp 28) last=$(( 1080 - $(dp 28) ))
+  if [ "$3" = 1 ]; then local t=$first; first=$last; last=$t; fi
+  adb shell input tap "$first" $top
+  shot "$4-drawer"
+  adb shell input keyevent KEYCODE_BACK
+  sleep 2
+  adb shell input tap "$last" $top
+  shot "$4-more"
+  adb shell input tap 540 1890
+  shot "$4-options"
+  adb shell input tap 540 572
+  shot "$4-options-save-to"
+  adb shell input keyevent KEYCODE_BACK
+  sleep 1
+  adb shell input keyevent KEYCODE_BACK
+  sleep 2
+}
+looks de True 0 12-de-dark
+looks ar False 1 13-ar
 adb shell pidof "$pkg" > "$out/pid.txt" || echo "not running" > "$out/pid.txt"
 adb logcat -d > "$out/logcat.txt"
 adb shell run-as "$pkg" cat files/mdm/logs/mdm.log > "$out/mdm.log" 2>/dev/null || true
