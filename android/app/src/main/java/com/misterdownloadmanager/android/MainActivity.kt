@@ -1,5 +1,8 @@
 package com.misterdownloadmanager.android
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import androidx.activity.OnBackPressedCallback
@@ -14,6 +17,15 @@ import com.google.androidgamesdk.GameActivity
 class MainActivity : GameActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The keystore, alarms, locks and the downloads' service, for the app (libmdm.so).
+        Platform.init(this)
+        nativeHost(Platform)
+        // Android 13 and later show the downloads' notification only with this permission.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
         // The interface draws inside the status and navigation bars, the display's cutout and the
         // keyboard, not under them: the content is padded by them, and the surface MDM draws on
         // with it.
@@ -39,6 +51,8 @@ class MainActivity : GameActivity() {
         nativeEnding()
         super.onDestroy()
     }
+
+    private external fun nativeHost(platform: Any)
 
     private external fun nativeBack()
 

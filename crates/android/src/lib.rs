@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 
 use egui_winit::winit::platform::android::activity::AndroidApp;
-use jni::objects::{JObject, JString};
+use jni::objects::{JObject, JString, JValue};
 use jni::{Env, JavaVM, jni_sig, jni_str};
 
 /// The activity's native thread (android-activity calls it once the activity is created): the
@@ -136,4 +136,100 @@ pub extern "system" fn Java_com_misterdownloadmanager_android_MainActivity_nativ
     _this: jni::sys::jobject,
 ) {
     mdm_app::android::activity_ending();
+}
+
+/// `MainActivity.nativeHost(platform)`: Kotlin's `Platform` (the keystore, exact alarms, wake
+/// locks and the downloads' foreground service), given to the app as its host once per process.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_misterdownloadmanager_android_MainActivity_nativeHost<'local>(
+    mut env: jni::EnvUnowned<'local>,
+    _this: JObject<'local>,
+    platform: JObject<'local>,
+) {
+    env.with_env(|env| -> jni::errors::Result<()> {
+        let host = JavaHost {
+            vm: env.get_java_vm()?,
+            platform: env.new_global_ref(&platform)?,
+        };
+        mdm_app::android::set_host(std::sync::Arc::new(host));
+        Ok(())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+/// The Kotlin `Platform` (android/…/Platform.kt), called from the app's threads.
+struct JavaHost {
+    vm: JavaVM,
+    platform: jni::refs::Global<JObject<'static>>,
+}
+
+impl JavaHost {
+    /// `platform.call(what, a, b, c, d)`, Platform's one entry: it answers `ok:<value>`, `none`
+    /// (or null), or `err:<why>`.
+    fn call(&self, what: &str, args: [Option<&str>; 4]) -> Result<Option<String>, String> {
+        let text = self
+            .vm
+            .attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
+                let what = env.new_string(what)?;
+                let mut strings = Vec::new();
+                for a in args {
+                    strings.push(match a {
+                        Some(a) => env.new_string(a)?,
+                        None => JString::default(),
+                    });
+                }
+                let out = env
+                    .call_method(
+                        &self.platform,
+                        jni_str!("call"),
+                        jni_sig!(
+                            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"
+                        ),
+                        &[
+                            JValue::Object(&what),
+                            JValue::Object(&strings[0]),
+                            JValue::Object(&strings[1]),
+                            JValue::Object(&strings[2]),
+                            JValue::Object(&strings[3]),
+                        ],
+                    )?
+                    .l()?;
+                if out.is_null() {
+                    return Ok(None);
+                }
+                let out = env.cast_local::<JString>(out)?;
+                Ok(Some(out.try_to_string(env)?))
+            })
+            .map_err(|e| e.to_string())?;
+        match text.as_deref() {
+            None | Some("none") => Ok(None),
+            Some(t) => match t.split_once(':') {
+                Some(("ok", value)) => Ok(Some(value.to_owned())),
+                Some(("err", why)) => Err(why.to_owned()),
+                _ => Err(format!("unexpected answer: {t}")),
+            },
+        }
+    }
+}
+
+impl mdm_app::android::Host for JavaHost {
+    fn keychain(
+        &self,
+        op: &str,
+        service: &str,
+        account: &str,
+        secret: Option<&str>,
+    ) -> Result<Option<String>, String> {
+        self.call("keychain", [Some(op), Some(service), Some(account), secret])
+    }
+
+    fn wake_at(&self, at: Option<i64>) -> Result<(), String> {
+        let at = at.map(|t| t.to_string());
+        self.call("wakeAt", [at.as_deref(), None, None, None])
+            .map(|_| ())
+    }
+
+    fn keep_awake(&self, reason: Option<&str>) -> bool {
+        self.call("keepAwake", [reason, None, None, None]).is_ok()
+    }
 }
