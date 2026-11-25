@@ -1,6 +1,7 @@
 package com.misterdownloadmanager.android
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
@@ -12,6 +13,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
+import java.lang.ref.WeakReference
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -29,8 +31,12 @@ import javax.crypto.spec.GCMParameterSpec
 object Platform {
     private lateinit var app: Context
 
-    fun init(context: Context) {
-        app = context.applicationContext
+    /** The activity on screen, for what needs one (Back sending the app to the background). */
+    private var activity = WeakReference<Activity>(null)
+
+    fun init(activity: Activity) {
+        app = activity.applicationContext
+        this.activity = WeakReference(activity)
         DownloadService.channels(app)
     }
 
@@ -48,6 +54,10 @@ object Platform {
             } else {
                 "err:the locks were refused"
             }
+            "toBack" -> activity.get()?.let {
+                it.runOnUiThread { it.moveTaskToBack(true) }
+                "ok:"
+            } ?: "err:no activity"
             else -> "err:unknown call $what"
         }
     } catch (e: Exception) {

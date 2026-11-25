@@ -59,6 +59,8 @@ jobs:
       - name: Build the debug APK for x86-64
         working-directory: android
         run: ./gradlew assembleDebug -Pmdm.abis=x86_64
+      - name: The lab server (the emulator downloads from it at 10.0.2.2)
+        run: cargo build --release -p mdm-labserver
       - name: Make room for the emulator
         run: rm -rf target/x86_64-linux-android/release/deps target/x86_64-linux-android/release/build && df -h /
       - name: Run it on Android 14

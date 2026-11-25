@@ -17,6 +17,12 @@ adb shell pm grant "$pkg" android.permission.POST_NOTIFICATIONS
 sleep 20
 adb shell wm size > "$out/screen.txt"
 adb shell wm density >> "$out/screen.txt"
+# MDM's lab server on the runner, reached from the emulator at 10.0.2.2: a 100 MB file at 1 MB/s
+# a connection, so the download is still running for the first screenshots.
+target/release/mdm-labserver --bind 0.0.0.0:8090 --log-file "$out/lab.jsonl" \
+  > /dev/null 2> "$out/lab.err" &
+lab=$!
+sleep 2
 adb logcat -c
 adb shell am start -W -n "$pkg/com.misterdownloadmanager.android.MainActivity"
 shot() { sleep 3; adb exec-out screencap -p > "$out/$1.png"; }
@@ -43,7 +49,7 @@ shot 05b-more-closed
 # Add URL (the bottom bar's first of four buttons), an address typed in it.
 adb shell input tap 135 $bottom
 shot 06-add-url
-adb shell input text "https://proof.ovh.net/files/100Mb.dat"
+adb shell input text "'http://10.0.2.2:8090/gen/100M/100Mb.dat?rate=1M'"
 shot 07-typed
 # Enter: OK (Add URL's default button), then Download File Info's Start Download.
 adb shell input keyevent KEYCODE_ENTER
@@ -56,11 +62,28 @@ shot 09-downloading
 adb shell cmd statusbar expand-notifications
 shot 09b-notification
 adb shell cmd statusbar collapse
-sleep 20
+sleep 10
 shot 09c-later
-adb shell ls -la /sdcard/Download/MisterDownloadManager > "$out/downloads.txt" 2>&1 || true
+# The download done (its .part renamed), up to three minutes, then its bytes checked.
+dir=/sdcard/Download/MisterDownloadManager
+for _ in $(seq 90); do
+  adb shell ls "$dir/100Mb.dat" > /dev/null 2>&1 && break
+  sleep 2
+done
+shot 09d-done
+adb shell ls -la "$dir" > "$out/downloads.txt" 2>&1 || true
+adb shell cat "$dir/*.mdm.json" >> "$out/downloads.txt" 2>&1 || true
+{
+  echo "device: $(adb shell sha256sum "$dir/100Mb.dat" 2>&1 | cut -d' ' -f1)"
+  echo "server: $(curl -s http://127.0.0.1:8090/gen/100M/100Mb.dat | sha256sum | cut -d' ' -f1)"
+} > "$out/sha256.txt"
+# Back on the main screen, nothing in front: the app goes to the background (the launcher shows),
+# then comes back as it was.
 adb shell input keyevent KEYCODE_BACK
-shot 10-closed
+shot 10-back-home
+adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity" > "$out/after-back.txt"
+adb shell am start -W -n "$pkg/com.misterdownloadmanager.android.MainActivity"
+shot 10b-back-again
 # The activity destroyed as the system may destroy it ("Don't keep activities"), then opened
 # again: the app closes (saving its list) and starts again in the same process.
 adb shell settings put global always_finish_activities 1
@@ -74,4 +97,5 @@ adb shell pidof "$pkg" > "$out/pid.txt" || echo "not running" > "$out/pid.txt"
 adb logcat -d > "$out/logcat.txt"
 adb shell run-as "$pkg" cat files/mdm/logs/mdm.log > "$out/mdm.log" 2>/dev/null || true
 adb shell run-as "$pkg" cat files/mdm/crash.log > "$out/crash.log" 2>/dev/null || true
+kill $lab 2>/dev/null
 exit 0

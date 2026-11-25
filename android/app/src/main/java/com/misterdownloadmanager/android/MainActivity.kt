@@ -43,7 +43,8 @@ class MainActivity : GameActivity() {
             WindowInsetsCompat.CONSUMED
         }
         // Back (the gesture, the navigation bar's button) closes the window in front, as Esc
-        // does on the desktop.
+        // does on the desktop; with nothing in front, the app goes to the background (Platform's
+        // toBack, as the app decides).
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = nativeBack()
         })

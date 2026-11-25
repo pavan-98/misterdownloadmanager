@@ -28,6 +28,15 @@ pub trait Host: Send + Sync + 'static {
     fn wake_at(&self, at: Option<i64>) -> Result<(), String>;
     /// Hold the CPU and Wi-Fi awake while downloads run (`Some(why)`), or let go (None).
     fn keep_awake(&self, reason: Option<&str>) -> bool;
+    /// Send the app's activity to the background, as Home does (Back on the main screen); the
+    /// downloads go on. False when there's no activity to send.
+    fn to_back(&self) -> bool;
+}
+
+/// Back on the main screen: the app goes to the background ([`Host::to_back`]).
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+fn to_back() -> bool {
+    host().is_some_and(|h| h.to_back())
 }
 
 static HOST: OnceLock<Arc<dyn Host>> = OnceLock::new();
@@ -162,6 +171,12 @@ pub fn editor_action() {
     }
 }
 
+/// Whether Back has something to close: a window besides the main one, the drawer or a menu
+/// sheet, as of the last frame. Without one, the activity goes to the background as Home sends
+/// it (`MainActivity`'s back callback), the downloads going on.
+#[cfg(target_os = "android")]
+static BACK_CLOSES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Back, as the system's back gesture or button (the activity's back dispatcher, which Android
 /// 13 and later use instead of a key): the next frame gets it as Esc ([`OnAndroid`]).
 #[cfg(target_os = "android")]
@@ -219,16 +234,28 @@ impl eframe::App for OnAndroid {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         eframe::App::ui(&mut self.app, ui, frame);
+        let closes = crate::crash::other_windows() || self.app.phone_overlay(ui.ctx());
+        BACK_CLOSES.store(closes, std::sync::atomic::Ordering::Relaxed);
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.typed_events(ctx, raw);
-        for event in &mut raw.events {
-            if let egui::Event::Key { key, .. } = event
-                && *key == egui::Key::BrowserBack
-            {
-                *key = egui::Key::Escape;
+        // Back: a key's (BrowserBack) and the gesture's ([`back_pressed`]).
+        let mut backs = BACKS.swap(0, std::sync::atomic::Ordering::Relaxed);
+        raw.events.retain(|e| match e {
+            egui::Event::Key {
+                key: egui::Key::BrowserBack,
+                pressed,
+                ..
+            } => {
+                backs += u32::from(*pressed);
+                false
             }
+            _ => true,
+        });
+        // Nothing for Back to close: the app goes to the background, as Android's apps do.
+        if backs > 0 && !BACK_CLOSES.load(std::sync::atomic::Ordering::Relaxed) && to_back() {
+            backs = 0;
         }
         let enters = ENTERS.swap(0, std::sync::atomic::Ordering::Relaxed);
         for pressed in (0..enters).flat_map(|_| [true, false]) {
@@ -240,7 +267,7 @@ impl eframe::App for OnAndroid {
                 modifiers: egui::Modifiers::NONE,
             });
         }
-        let backs = BACKS.swap(0, std::sync::atomic::Ordering::Relaxed);
+        // Else Back is Esc, which closes the window, the drawer or the menu in front.
         for pressed in (0..backs).flat_map(|_| [true, false]) {
             raw.events.push(egui::Event::Key {
                 key: egui::Key::Escape,
@@ -536,6 +563,9 @@ mod tests {
             *self.awake.lock().unwrap() = reason.map(str::to_owned);
             true
         }
+        fn to_back(&self) -> bool {
+            true
+        }
     }
 
     /// One test for the whole module: the host is given once per process.
@@ -545,6 +575,7 @@ mod tests {
         assert!(wake_at(Some(1)).is_err());
         assert_eq!(wake_support(), crate::wake::Support::NoAlarm);
         assert!(!keep_awake(Some("downloads")));
+        assert!(!to_back(), "no activity to send back yet");
 
         let fake = Arc::new(Fake::default());
         assert!(set_host(fake.clone()));
@@ -572,6 +603,7 @@ mod tests {
         assert_eq!(fake.awake.lock().unwrap().as_deref(), Some("downloads"));
         assert!(keep_awake(None));
         assert_eq!(*fake.awake.lock().unwrap(), None);
+        assert!(to_back());
 
         assert!(default_browser().is_none());
     }

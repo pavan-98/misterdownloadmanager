@@ -263,6 +263,10 @@ impl mdm_app::android::Host for JavaHost {
     fn keep_awake(&self, reason: Option<&str>) -> bool {
         self.call("keepAwake", [reason, None, None, None]).is_ok()
     }
+
+    fn to_back(&self) -> bool {
+        self.call("toBack", [None; 4]).is_ok()
+    }
 }
 
 /// `MainActivity.nativeEditorAction()`: the soft keyboard's action key (Done, Go), which the

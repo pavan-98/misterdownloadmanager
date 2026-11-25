@@ -196,6 +196,15 @@ impl App {
         }
     }
 
+    /// Whether the drawer or a menu sheet is over the list (Back closes it).
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(crate) fn phone_overlay(&self, ctx: &egui::Context) -> bool {
+        self.popup.is_some()
+            || ctx
+                .data(|d| d.get_temp::<bool>(drawer_id()))
+                .unwrap_or(false)
+    }
+
     /// The view's name for the top bar: the category's, the queue's, or All Downloads.
     fn view_title(&self) -> String {
         self.tree_rows()
