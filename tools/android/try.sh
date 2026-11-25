@@ -72,9 +72,10 @@ for _ in $(seq 90); do
   sleep 2
 done
 shot 09d-done
-# Open with...: the row's menu (a long press on it), its second entry, which hands the file to
+# Open with...: the row's menu (a long press, held 2 s: the emulator draws a frame in up to a
+# second, and egui sees the press as long from 0.8 s), its second entry, which hands the file to
 # Android's chooser of apps. Back returns to MDM.
-adb shell input swipe 540 305 540 305 900
+adb shell input swipe 540 305 540 305 2000
 shot 09e-row-menu
 adb shell input tap 540 605
 shot 09f-open-with
