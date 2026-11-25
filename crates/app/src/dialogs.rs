@@ -632,6 +632,24 @@ fn dialog_window<T>(
     if window_was_gone(ctx, key.with("window-pass")) {
         forget_window(ctx, vid, key);
     }
+    if crate::app::phone::active(ctx) {
+        // A phone: a page over the main window (phone.rs), its layout scrolled in it.
+        crate::crash::window(id);
+        let (out, closed) = crate::app::phone::sheet(ctx, key.with("sheet"), title, bg, |ui| {
+            keyboard_to_click(ui.ctx());
+            let out = scroll(ui, key, client, |ui, o| {
+                let _surface = winui::Surface::enter(o.x, o.x + client[0]);
+                body(ui, o)
+            });
+            crate::chrome::tell_screen_readers(ui.ctx());
+            out
+        });
+        let out = if closed { Outcome::Closed } else { out };
+        if !matches!(out, Outcome::Open) {
+            forget_window(ctx, vid, key);
+        }
+        return out;
+    }
     // Hidden until `keep_theme` has given it its theme (see there).
     let mut builder = crate::window_builder()
         .with_visible(false)
@@ -657,14 +675,7 @@ fn dialog_window<T>(
     }
     // Its place in the cascade (#1741), for `place` and `keep_placed`.
     ctx.data_mut(|d| d.insert_temp(key.with("cascade"), nth.cascade()));
-    if crate::app::phone::active(ctx) {
-        // A phone: a sheet over the whole window, its title bar at the top (phone.rs).
-        let room = ctx.content_rect();
-        builder = builder.with_position(room.min).with_inner_size([
-            room.width(),
-            room.height() - crate::app::phone::SHEET_TITLE_H,
-        ]);
-    } else if let Some(p) = place(ctx, key, shown) {
+    if let Some(p) = place(ctx, key, shown) {
         builder = builder.with_position(p);
     }
     crate::crash::window(id);
@@ -2544,11 +2555,19 @@ impl Complete {
     pub fn show(&mut self, ctx: &egui::Context) -> Outcome<()> {
         let id = format!("complete-{}", self.id);
         self.seen |= notice_seen(ctx, &id);
+        // A phone (phone.rs): the page's width, the buttons two by two and finger-sized.
+        let phone = crate::app::phone::active(ctx);
+        let wide = if phone {
+            crate::app::phone::sheet_width(ctx)
+        } else {
+            455.0
+        };
+        let client = if phone { [wide, 330.0] } else { [455.0, 215.0] };
         notice(
             ctx,
             &id,
             "Download complete",
-            [455.0, 215.0],
+            client,
             true,
             winui::BG(),
             !self.seen,
@@ -2587,7 +2606,7 @@ impl Complete {
                         o.y + 52.0,
                         &self.notices.join(" "),
                         winui::ERROR(),
-                        o.x + 444.0,
+                        o.x + wide - 11.0,
                         ("complete-notice", self.id),
                     );
                 }
@@ -2602,7 +2621,7 @@ impl Complete {
                 // Read-only and copyable (an editable copy let typing seem to work, then reverted).
                 winui::readonly_field(
                     ui,
-                    r(o, 11.0, 78.0, 434.0, 23.0),
+                    r(o, 11.0, 78.0, wide - 21.0, 23.0),
                     &self.url,
                     winui::BG(),
                     true,
@@ -2617,31 +2636,42 @@ impl Complete {
                 );
                 winui::readonly_field(
                     ui,
-                    r(o, 11.0, 124.0, 434.0, 23.0),
+                    r(o, 11.0, 124.0, wide - 21.0, 23.0),
                     &display_path(&self.path),
                     winui::BG(),
                     true,
                     "complete-saved",
                 );
 
-                let btn = |ui: &mut Ui, (x, w): (f32, f32), label: &str, kind| {
-                    winui::button(ui, r(o, x, 157.0, w, 21.0), label, kind, false, None)
+                let btn = |ui: &mut Ui, at: egui::Rect, label: &str, kind| {
+                    winui::button(ui, at, label, kind, false, None)
                 };
-                // As wide as their labels in this language (#192): a longer one pushes those
-                // after it right, Close last at the window's edge.
-                let [open_at, with_at, folder_at, close_at] = winui::button_row_from_left(
-                    &p,
-                    &[
-                        ("Open", 12.0, 90.0),
-                        ("Open with...", 115.0, 90.0),
-                        ("Open folder", 219.0, 90.0),
-                        ("Close", 354.0, 90.0),
-                    ],
-                    13.0,
-                    444.0,
-                    200.0,
-                )[..] else {
-                    unreachable!("four buttons")
+                let [open_at, with_at, folder_at, close_at] = if phone {
+                    // Two by two, each half the page.
+                    let half = (wide - 24.0 - 8.0) / 2.0;
+                    let at = |col: f32, row: f32| {
+                        r(o, 12.0 + col * (half + 8.0), 157.0 + row * 52.0, half, 44.0)
+                    };
+                    [at(0.0, 0.0), at(1.0, 0.0), at(0.0, 1.0), at(1.0, 1.0)]
+                } else {
+                    // As wide as their labels in this language (#192): a longer one pushes
+                    // those after it right, Close last at the window's edge.
+                    let [a, b, c, d] = winui::button_row_from_left(
+                        &p,
+                        &[
+                            ("Open", 12.0, 90.0),
+                            ("Open with...", 115.0, 90.0),
+                            ("Open folder", 219.0, 90.0),
+                            ("Close", 354.0, 90.0),
+                        ],
+                        13.0,
+                        444.0,
+                        200.0,
+                    )[..] else {
+                        unreachable!("four buttons")
+                    };
+                    let at = |(x, w): (f32, f32)| r(o, x, 157.0, w, 21.0);
+                    [at(a), at(b), at(c), at(d)]
                 };
                 // i18n: verb: opens the downloaded file
                 let open = btn(ui, open_at, "Open", ButtonKind::Default);
@@ -2650,8 +2680,14 @@ impl Complete {
                 // i18n: verb: closes this window
                 let close = btn(ui, close_at, "Close", ButtonKind::Normal);
                 // Windows: the drag handle at the trailing edge, after the snooze.
-                let room = if cfg!(windows) { 406.0 } else { 444.0 };
-                if let Some(s) = complete_footer(ui, o, 191.0, &mut self.dont_show, room) {
+                let (footer_y, room) = if phone {
+                    (157.0 + 52.0 + 44.0 + 30.0, wide - 11.0)
+                } else if cfg!(windows) {
+                    (191.0, 406.0)
+                } else {
+                    (191.0, 444.0)
+                };
+                if let Some(s) = complete_footer(ui, o, footer_y, &mut self.dont_show, room) {
                     self.snooze = Some(s);
                 }
 
@@ -2663,7 +2699,7 @@ impl Complete {
                 // drag built yet (no drag source in their window library), so the handle isn't
                 // shown there and nothing is moved: Open folder is the way to the file.
                 #[cfg(windows)]
-                {
+                if !phone {
                     let handle = r(o, 414.0, 187.0, 27.0, 20.0);
                     let grip = ui
                         .interact(

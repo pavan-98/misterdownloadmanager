@@ -416,8 +416,13 @@ pub fn parse_fonts_xml(xml: &str, dir: &std::path::Path) -> Vec<FontFamily> {
 static DOWNLOADS: OnceLock<std::path::PathBuf> = OnceLock::new();
 
 /// Where downloads go unless Options says otherwise: the phone's Download folder, MDM's own
-/// folder in it (given by `crates/android` at the start).
+/// folder in it (given by `crates/android` at the start). Made if it isn't there: it is MDM's,
+/// and the first download shouldn't ask to create it (Download File Info asks for a folder
+/// the user typed).
 pub fn set_downloads_dir(dir: std::path::PathBuf) {
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        tracing::warn!("the downloads folder {}: {e}", dir.display());
+    }
     let _ = DOWNLOADS.set(dir);
 }
 

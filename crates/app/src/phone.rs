@@ -17,13 +17,78 @@ const BAR_H: f32 = 56.0;
 const ROW_H: f32 = 72.0;
 /// The space around the bars' and rows' contents.
 const PAD: f32 = 16.0;
-/// The title bar egui draws over a window embedded in the phone's one window (a dialog's sheet).
-pub const SHEET_TITLE_H: f32 = 24.0;
 
-/// The width a sheet's contents can use: the window's, less the frame egui draws around a
-/// window embedded in it.
+/// The width a sheet's contents can use ([`sheet`]): the window's.
 pub fn sheet_width(ctx: &egui::Context) -> f32 {
-    ctx.content_rect().width() - 16.0
+    ctx.content_rect().width()
+}
+
+/// The height a sheet's contents can use ([`sheet`]): the window's, less its top bar.
+pub fn sheet_height(ctx: &egui::Context) -> f32 {
+    ctx.content_rect().height() - BAR_H
+}
+
+/// A window on a phone (a dialog, a download's progress): a page over the whole main window,
+/// as Android's apps show one, with its title in a top bar whose × closes it as the desktop
+/// window's × does. It isn't an egui window: those are placed and framed by egui, can be dragged,
+/// and give a screen reader's root to whichever was drawn last. `body` lays out the page under
+/// the bar, in its own width ([`sheet_width`]). Returns its answer, and whether × was tapped.
+pub(crate) fn sheet<R>(
+    ctx: &egui::Context,
+    id: egui::Id,
+    title: &str,
+    bg: egui::Color32,
+    body: impl FnOnce(&mut Ui) -> R,
+) -> (R, bool) {
+    let room = ctx.content_rect();
+    egui::Area::new(id)
+        .order(egui::Order::Foreground)
+        .fixed_pos(room.min)
+        .movable(false)
+        .constrain(false)
+        .show(ctx, |ui| {
+            ui.set_min_size(room.size());
+            ui.set_max_size(room.size());
+            let full = room;
+            // The page takes the taps that miss its controls (the list under it gets none), and
+            // is a window for a screen reader, named by its title.
+            let page = ui.interact(full, id.with("page"), egui::Sense::click());
+            let name = title.to_owned();
+            page.widget_info(move || egui::WidgetInfo::labeled(egui::Role::Window, true, &name));
+            ui.painter().rect_filled(full, 0.0, bg);
+            let _surface = winui::Surface::enter(full.min.x, full.max.x);
+            let top = egui::Rect::from_min_size(full.min, egui::vec2(full.width(), BAR_H));
+            let p = ui.painter();
+            p.rect_filled(winui::rect(top), 0.0, colors().menubar);
+            p.hline(
+                winui::rect(top).x_range(),
+                top.max.y - 0.5,
+                egui::Stroke::new(1.0, colors().toolbar_line),
+            );
+            let close_at = egui::Rect::from_min_size(top.min, egui::vec2(BAR_H, BAR_H));
+            let closed = bar_button(ui, close_at, id.with("close"), Glyph::Close);
+            let tx = close_at.max.x + 4.0;
+            let shown = elide(ui, title, font_bold(18.0), top.max.x - PAD - tx);
+            ui.painter().text(
+                winui::rect(egui::Rect::from_min_size(
+                    pos2(tx, top.center().y),
+                    egui::Vec2::ZERO,
+                ))
+                .min,
+                if winui::rtl() {
+                    egui::Align2::RIGHT_CENTER
+                } else {
+                    egui::Align2::LEFT_CENTER
+                },
+                shown,
+                font_bold(18.0),
+                colors().text,
+            );
+            let below = egui::Rect::from_min_max(pos2(full.min.x, top.max.y), full.max);
+            let mut rest = ui.new_child(egui::UiBuilder::new().max_rect(below));
+            (body(&mut rest), closed)
+        })
+        .inner
 }
 
 /// Whether the main window takes the phone's layout now.
@@ -464,10 +529,17 @@ enum Glyph {
     Menu,
     /// Three dots: the rest of the commands.
     More,
+    /// A cross: closes the page ([`sheet`]).
+    Close,
 }
 
 /// A square button of the top bar at English `at`; true when tapped.
-fn bar_button(ui: &mut Ui, at: egui::Rect, id: &str, glyph: Glyph) -> bool {
+fn bar_button(
+    ui: &mut Ui,
+    at: egui::Rect,
+    id: impl std::hash::Hash + std::fmt::Debug,
+    glyph: Glyph,
+) -> bool {
     let screen = winui::rect(at);
     let r = ui.interact(screen, egui::Id::unique(id), egui::Sense::click());
     let p = ui.painter();
@@ -489,6 +561,17 @@ fn bar_button(ui: &mut Ui, at: egui::Rect, id: &str, glyph: Glyph) -> bool {
             for dy in [-6.0, 0.0, 6.0] {
                 p.circle_filled(c + egui::vec2(0.0, dy), 2.0, ink);
             }
+        }
+        Glyph::Close => {
+            let stroke = egui::Stroke::new(2.0, ink);
+            p.line_segment(
+                [c + egui::vec2(-7.0, -7.0), c + egui::vec2(7.0, 7.0)],
+                stroke,
+            );
+            p.line_segment(
+                [c + egui::vec2(-7.0, 7.0), c + egui::vec2(7.0, -7.0)],
+                stroke,
+            );
         }
     }
     r.clicked()

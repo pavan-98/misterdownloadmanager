@@ -595,85 +595,96 @@ impl Progress {
             .with_icon(crate::app_icon())
             .with_maximize_button(false);
         let phone = crate::app::phone::active(ctx);
-        if phone {
-            // A phone: a sheet over the whole window (phone.rs), in its own layout.
-            let room = ctx.content_rect();
-            builder = builder.with_position(room.min).with_inner_size([
-                room.width(),
-                room.height() - crate::app::phone::SHEET_TITLE_H,
-            ]);
-        } else if let Some(p) = crate::dialogs::place(ctx, key, [548.0, 412.0 + drop]) {
+        if let Some(p) = crate::dialogs::place(ctx, key, [548.0, 412.0 + drop]) {
             builder = builder.with_position(p);
         }
         // Minimize hides it in the notification area when asked (and a tray can bring it back).
         let minimize_hides = self.tray && self.minimize_to_tray;
         // The window, once its frame is applied (Windows: its caption parts go to its hit test).
-        let action = ctx.show_viewport_immediate(vid, builder, |ui, _| {
-            crate::dialogs::keyboard_to_click(ui.ctx());
-            winui::name_window(ui, &title_now);
-            // Painted in the pass that closes it too (see dialogs::close_requested).
-            let close = crate::dialogs::close_requested(ui);
-            if !close && minimize_hides && ui.ctx().input(|i| i.viewport().minimized == Some(true))
-            {
-                return Action::Hide;
-            }
-            let action = egui::CentralPanel::no_frame()
-                .frame(egui::Frame::new().fill(winui::BG()))
-                .show(ui, |ui| {
-                    let o = ui.max_rect().min;
-                    // The window's width, laid out from the right in a right-to-left
-                    // interface (the title bar; the layout under it has its own).
-                    let _surface = winui::Surface::enter(o.x, o.x + shown[0]);
-                    if phone {
-                        // A phone: one column the sheet's width ([`Progress::phone_body`]).
-                        return egui::ScrollArea::vertical()
-                            .show(ui, |ui| {
-                                let area = ui.max_rect();
-                                self.phone_body(ui, area, item, snap, frac, bar)
-                            })
-                            .inner;
+        let action = if phone {
+            // A phone: a page over the main window (phone.rs) in its own layout
+            // ([`Progress::phone_body`]), scrolled when the screen is short.
+            let (action, closed) =
+                crate::app::phone::sheet(ctx, key.with("sheet"), &title_now, winui::BG(), |ui| {
+                    crate::dialogs::keyboard_to_click(ui.ctx());
+                    let action = egui::ScrollArea::vertical()
+                        .show(ui, |ui| {
+                            let area = ui.max_rect();
+                            self.phone_body(ui, area, item, snap, frac, bar)
+                        })
+                        .inner;
+                    // Back (Esc) hides the page; the download goes on.
+                    if matches!(action, Action::None) && winui::escape_pressed(ui) {
+                        Action::Close
+                    } else {
+                        action
                     }
-                    let caption = draw_caption(ui, o, shown[0], &title_now, &buttons, hwnd);
-                    // The layout under the title bar, scrolled when the window is smaller.
-                    let below = egui::Rect::from_min_max(o + vec2(0.0, TITLE_H), ui.max_rect().max);
-                    let mut rest = ui.new_child(egui::UiBuilder::new().max_rect(below));
-                    let action = crate::dialogs::scroll(&mut rest, key, body, |ui, o| {
-                        let _surface = winui::Surface::enter(o.x, o.x + body[0]);
-                        self.body(ui, o, item, snap, frac, (bar, &drawn.segments))
-                    });
-                    // The system menu's "Hide to the notification area" (Alt+Space).
-                    #[cfg(windows)]
-                    if let Some(h) = hwnd
-                        && crate::win32::take_hide_asked(h)
-                    {
-                        return Action::Hide;
-                    }
-                    match caption {
-                        Some(CaptionButton::Close) => Action::Close,
-                        Some(CaptionButton::ToTray) => Action::Hide,
-                        Some(CaptionButton::Minimize) if minimize_hides => Action::Hide,
-                        Some(CaptionButton::Minimize) => {
-                            crate::dialogs::minimize(ui.ctx(), hwnd);
-                            action
+                });
+            if closed { Action::Close } else { action }
+        } else {
+            ctx.show_viewport_immediate(vid, builder, |ui, _| {
+                crate::dialogs::keyboard_to_click(ui.ctx());
+                winui::name_window(ui, &title_now);
+                // Painted in the pass that closes it too (see dialogs::close_requested).
+                let close = crate::dialogs::close_requested(ui);
+                if !close
+                    && minimize_hides
+                    && ui.ctx().input(|i| i.viewport().minimized == Some(true))
+                {
+                    return Action::Hide;
+                }
+                let action = egui::CentralPanel::no_frame()
+                    .frame(egui::Frame::new().fill(winui::BG()))
+                    .show(ui, |ui| {
+                        let o = ui.max_rect().min;
+                        // The window's width, laid out from the right in a right-to-left
+                        // interface (the title bar; the layout under it has its own).
+                        let _surface = winui::Surface::enter(o.x, o.x + shown[0]);
+                        let caption = draw_caption(ui, o, shown[0], &title_now, &buttons, hwnd);
+                        // The layout under the title bar, scrolled when the window is smaller.
+                        let below =
+                            egui::Rect::from_min_max(o + vec2(0.0, TITLE_H), ui.max_rect().max);
+                        let mut rest = ui.new_child(egui::UiBuilder::new().max_rect(below));
+                        let action = crate::dialogs::scroll(&mut rest, key, body, |ui, o| {
+                            let _surface = winui::Surface::enter(o.x, o.x + body[0]);
+                            self.body(ui, o, item, snap, frac, (bar, &drawn.segments))
+                        });
+                        // The system menu's "Hide to the notification area" (Alt+Space).
+                        #[cfg(windows)]
+                        if let Some(h) = hwnd
+                            && crate::win32::take_hide_asked(h)
+                        {
+                            return Action::Hide;
                         }
-                        _ => action,
-                    }
-                })
-                .inner;
-            // Its menu opened from the keyboard, said to screen readers (#328).
-            crate::chrome::tell_screen_readers(ui.ctx());
-            if close {
-                return Action::Close;
-            }
-            // Escape hides the window (the download goes on), as the × does.
-            if matches!(action, Action::None) && winui::escape_pressed(ui) {
-                Action::Close
-            } else {
-                action
-            }
-        });
+                        match caption {
+                            Some(CaptionButton::Close) => Action::Close,
+                            Some(CaptionButton::ToTray) => Action::Hide,
+                            Some(CaptionButton::Minimize) if minimize_hides => Action::Hide,
+                            Some(CaptionButton::Minimize) => {
+                                crate::dialogs::minimize(ui.ctx(), hwnd);
+                                action
+                            }
+                            _ => action,
+                        }
+                    })
+                    .inner;
+                // Its menu opened from the keyboard, said to screen readers (#328).
+                crate::chrome::tell_screen_readers(ui.ctx());
+                if close {
+                    return Action::Close;
+                }
+                // Escape hides the window (the download goes on), as the × does.
+                if matches!(action, Action::None) && winui::escape_pressed(ui) {
+                    Action::Close
+                } else {
+                    action
+                }
+            })
+        };
         // Elsewhere the window manager is asked for its size at a new interface size (#262).
-        crate::dialogs::follow_scale(ctx, vid, key, shown);
+        if !phone {
+            crate::dialogs::follow_scale(ctx, vid, key, shown);
+        }
         // The glide's frames: while the download runs, its figures move and the window can be
         // seen (minimized, or hidden in the tray where it isn't drawn at all, it waits).
         let minimized = ctx.input_for(vid, |i| i.viewport().minimized) == Some(true);
@@ -716,15 +727,17 @@ impl Progress {
         if closing {
             self.taskbar.set_window(0);
         }
-        crate::dialogs::keep_theme(
-            ctx,
-            vid,
-            key,
-            &title_now,
-            crate::theme::dark_surface(),
-            !closing,
-            true,
-        );
+        if !phone {
+            crate::dialogs::keep_theme(
+                ctx,
+                vid,
+                key,
+                &title_now,
+                crate::theme::dark_surface(),
+                !closing,
+                true,
+            );
+        }
         let action = match (action, self.pending_limit.take()) {
             (Action::None, Some((limit, remember))) => Action::Limit(limit, remember),
             (a, _) => a,

@@ -141,9 +141,13 @@ pub fn work_area(ctx: &egui::Context, at: Pos2) -> Option<Rect> {
 /// less a frame (Windows), else the monitor less a frame and the desktop's panels. None when
 /// unknown.
 pub fn room(ctx: &egui::Context, at: Pos2) -> Option<Vec2> {
-    // A phone's layout (Android): its one window is the room, every window a sheet in it.
+    // A phone's layout (Android): its one window is the room, every window a page in it
+    // under its top bar (phone.rs `sheet`).
     if crate::app::phone::active(ctx) {
-        return Some(ctx.content_rect().size());
+        return Some(egui::vec2(
+            crate::app::phone::sheet_width(ctx),
+            crate::app::phone::sheet_height(ctx),
+        ));
     }
     let zoom = ctx.zoom_factor();
     if let Some(screen) = test_screen() {
