@@ -100,6 +100,7 @@ pub fn run(
     crate::theme::set_ui_font(loaded.settings.interface_font.clone(), false, false);
     crate::theme::init_text_size(loaded.settings.interface_text_size);
     let _ = loaded.settings.for_disk();
+    let _ = ACTIVITY.set(android_app.clone());
     let options = eframe::NativeOptions {
         android_app: Some(android_app),
         viewport: crate::window_builder().with_title(crate::MAIN_TITLE),
@@ -113,14 +114,17 @@ pub fn run(
             let _ = window.set(cc.egui_ctx.clone());
             crate::clipboard::wake(&cc.egui_ctx);
             let _ = CONTEXT.set(cc.egui_ctx.clone());
-            Ok(Box::new(OnAndroid(crate::app::App::new(
-                &cc.egui_ctx,
-                handle,
-                commands,
-                sink,
-                loaded,
-                crate::Start::Shown,
-            ))))
+            Ok(Box::new(OnAndroid {
+                app: crate::app::App::new(
+                    &cc.egui_ctx,
+                    handle,
+                    commands,
+                    sink,
+                    loaded,
+                    crate::Start::Shown,
+                ),
+                typed: String::new(),
+            }))
         }),
     );
     tracing::info!("the activity ended");
@@ -166,12 +170,21 @@ pub fn activity_ending() {
 /// desktop. A key's Back (a keyboard's, an emulator's KEYCODE_BACK) comes to the window as
 /// winit's BrowserBack; the gesture's through [`back_pressed`].
 #[cfg(target_os = "android")]
-struct OnAndroid(crate::app::App);
+struct OnAndroid {
+    app: crate::app::App,
+    /// The soft keyboard's text as last seen ([`typed_events`]).
+    typed: String,
+}
+
+/// The activity, for its soft keyboard's text (GameActivity's text input state).
+#[cfg(target_os = "android")]
+static ACTIVITY: OnceLock<egui_winit::winit::platform::android::activity::AndroidApp> =
+    OnceLock::new();
 
 #[cfg(target_os = "android")]
 impl eframe::App for OnAndroid {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        eframe::App::logic(&mut self.0, ctx, frame);
+        eframe::App::logic(&mut self.app, ctx, frame);
         // The activity's window is gone and no frame is drawn: eframe's logic-only pass gets
         // here, and the closed window ends `run`.
         if ENDING.load(std::sync::atomic::Ordering::SeqCst) {
@@ -181,10 +194,11 @@ impl eframe::App for OnAndroid {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        eframe::App::ui(&mut self.0, ui, frame);
+        eframe::App::ui(&mut self.app, ui, frame);
     }
 
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        self.typed_events(ctx, raw);
         for event in &mut raw.events {
             if let egui::Event::Key { key, .. } = event
                 && *key == egui::Key::BrowserBack
@@ -203,6 +217,61 @@ impl eframe::App for OnAndroid {
             });
         }
     }
+}
+
+#[cfg(target_os = "android")]
+impl OnAndroid {
+    /// The soft keyboard's typing. GameActivity hands the keyboard's text to the app as a text
+    /// input state (the whole text being edited), which winit doesn't pass on: the change since
+    /// the last frame becomes egui's events (Backspaces for what went, then the text that came),
+    /// for the text box that has the keys. Without one, the state starts again empty.
+    fn typed_events(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        use egui_winit::winit::platform::android::activity::input::{TextInputState, TextSpan};
+        let Some(activity) = ACTIVITY.get() else {
+            return;
+        };
+        if !ctx.egui_wants_keyboard_input() {
+            if !self.typed.is_empty() {
+                self.typed.clear();
+                activity.set_text_input_state(TextInputState {
+                    text: String::new(),
+                    selection: TextSpan { start: 0, end: 0 },
+                    compose_region: None,
+                });
+            }
+            return;
+        }
+        let now = activity.text_input_state().text;
+        if now == self.typed {
+            return;
+        }
+        let (gone, came) = typed_change(&self.typed, &now);
+        for pressed in (0..gone).flat_map(|_| [true, false]) {
+            raw.events.push(egui::Event::Key {
+                key: egui::Key::Backspace,
+                physical_key: None,
+                pressed,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
+        if !came.is_empty() {
+            raw.events.push(egui::Event::Text(came));
+        }
+        self.typed = now;
+    }
+}
+
+/// What changed from `old` to `new` (a soft keyboard's text, [`OnAndroid::typed_events`]): how
+/// many characters went from the end of what they share, and what came after it.
+pub fn typed_change(old: &str, new: &str) -> (usize, String) {
+    let shared = old
+        .char_indices()
+        .zip(new.chars())
+        .take_while(|((_, a), b)| a == b)
+        .last()
+        .map_or(0, |((i, a), _)| i + a.len_utf8());
+    (old[shared..].chars().count(), new[shared..].to_owned())
 }
 
 /// One of Android's font families (/system/etc/fonts.xml): its name (`sans-serif`…) or the
@@ -438,6 +507,19 @@ mod tests {
         assert_eq!(*fake.awake.lock().unwrap(), None);
 
         assert!(default_browser().is_none());
+    }
+
+    /// The soft keyboard's text, frame to frame: typed on, corrected, replaced.
+    #[test]
+    fn typed_text_becomes_backspaces_and_text() {
+        assert_eq!(typed_change("", "h"), (0, "h".to_owned()));
+        assert_eq!(typed_change("http", "https:/"), (0, "s:/".to_owned()));
+        assert_eq!(typed_change("helo", "hello"), (1, "lo".to_owned()));
+        assert_eq!(typed_change("abc", ""), (3, String::new()));
+        assert_eq!(typed_change("same", "same"), (0, String::new()));
+        assert_eq!(typed_change("наб", "набо"), (0, "о".to_owned()));
+        assert_eq!(typed_change("日本", "日本語"), (0, "語".to_owned()));
+        assert_eq!(typed_change("café", "cafe"), (1, "e".to_owned()));
     }
 
     /// fonts.xml as Android 14 writes it: named families, language families (one with two

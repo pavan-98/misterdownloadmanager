@@ -38,10 +38,17 @@ adb shell input keyevent KEYCODE_BACK
 # Add URL (the bottom bar's first of four buttons), an address typed in it.
 adb shell input tap 135 $bottom
 shot 06-add-url
-adb shell input text "https://example.com/file.zip"
+adb shell input text "https://proof.ovh.net/files/1Mb.dat"
 shot 07-typed
+# Enter: OK (Add URL's default button), then Download File Info's Start Download.
+adb shell input keyevent KEYCODE_ENTER
+sleep 6
+shot 08-file-info
+adb shell input keyevent KEYCODE_ENTER
+sleep 15
+shot 09-downloaded
 adb shell input keyevent KEYCODE_BACK
-shot 08-closed
+shot 10-closed
 # The activity destroyed as the system may destroy it ("Don't keep activities"), then opened
 # again: the app closes (saving its list) and starts again in the same process.
 adb shell settings put global always_finish_activities 1
@@ -49,7 +56,7 @@ adb shell input keyevent KEYCODE_HOME
 sleep 8
 adb shell am start -W -n "$pkg/com.misterdownloadmanager.android.MainActivity"
 sleep 15
-shot 09-reopened
+shot 11-reopened
 adb shell settings put global always_finish_activities 0
 adb shell pidof "$pkg" > "$out/pid.txt" || echo "not running" > "$out/pid.txt"
 adb logcat -d > "$out/logcat.txt"

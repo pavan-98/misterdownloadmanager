@@ -1224,7 +1224,7 @@ enum Popup {
 
 // The main window in a phone's layout (Android).
 #[path = "phone.rs"]
-mod phone;
+pub(crate) mod phone;
 
 /// Hidden to the tray, the window's memory is given back 2 s after it hid (its last frames done),
 /// again 2 minutes after it hid (the clock's ticks page some back in, about 5 MB in the first

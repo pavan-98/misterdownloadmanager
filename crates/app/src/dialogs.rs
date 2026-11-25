@@ -657,7 +657,14 @@ fn dialog_window<T>(
     }
     // Its place in the cascade (#1741), for `place` and `keep_placed`.
     ctx.data_mut(|d| d.insert_temp(key.with("cascade"), nth.cascade()));
-    if let Some(p) = place(ctx, key, shown) {
+    if crate::app::phone::active(ctx) {
+        // A phone: a sheet over the whole window, its title bar at the top (phone.rs).
+        let room = ctx.content_rect();
+        builder = builder.with_position(room.min).with_inner_size([
+            room.width(),
+            room.height() - crate::app::phone::SHEET_TITLE_H,
+        ]);
+    } else if let Some(p) = place(ctx, key, shown) {
         builder = builder.with_position(p);
     }
     crate::crash::window(id);

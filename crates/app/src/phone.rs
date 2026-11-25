@@ -17,6 +17,8 @@ const BAR_H: f32 = 56.0;
 const ROW_H: f32 = 72.0;
 /// The space around the bars' and rows' contents.
 const PAD: f32 = 16.0;
+/// The title bar egui draws over a window embedded in the phone's one window (a dialog's sheet).
+pub const SHEET_TITLE_H: f32 = 24.0;
 
 /// Whether the main window takes the phone's layout now.
 pub fn active(ctx: &egui::Context) -> bool {
