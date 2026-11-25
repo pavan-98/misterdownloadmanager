@@ -233,3 +233,13 @@ impl mdm_app::android::Host for JavaHost {
         self.call("keepAwake", [reason, None, None, None]).is_ok()
     }
 }
+
+/// `MainActivity.nativeEditorAction()`: the soft keyboard's action key (Done, Go), which the
+/// app takes as Enter (`mdm_app::android::editor_action`).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_misterdownloadmanager_android_MainActivity_nativeEditorAction(
+    _env: *mut jni::sys::JNIEnv,
+    _this: jni::sys::jobject,
+) {
+    mdm_app::android::editor_action();
+}

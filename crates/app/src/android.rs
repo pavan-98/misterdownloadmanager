@@ -140,6 +140,20 @@ static CONTEXT: OnceLock<egui::Context> = OnceLock::new();
 #[cfg(target_os = "android")]
 static BACKS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
+/// The soft keyboard's action key (Done, Go) since the last frame ([`editor_action`]).
+#[cfg(target_os = "android")]
+static ENTERS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// The soft keyboard's action key (its Done or Go, where a keyboard shows Enter): the next frame
+/// gets it as Enter, which the text box answers as on the desktop (Add URL's OK).
+#[cfg(target_os = "android")]
+pub fn editor_action() {
+    ENTERS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if let Some(ctx) = CONTEXT.get() {
+        ctx.request_repaint();
+    }
+}
+
 /// Back, as the system's back gesture or button (the activity's back dispatcher, which Android
 /// 13 and later use instead of a key): the next frame gets it as Esc ([`OnAndroid`]).
 #[cfg(target_os = "android")]
@@ -206,6 +220,16 @@ impl eframe::App for OnAndroid {
                 *key = egui::Key::Escape;
             }
         }
+        let enters = ENTERS.swap(0, std::sync::atomic::Ordering::Relaxed);
+        for pressed in (0..enters).flat_map(|_| [true, false]) {
+            raw.events.push(egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
         let backs = BACKS.swap(0, std::sync::atomic::Ordering::Relaxed);
         for pressed in (0..backs).flat_map(|_| [true, false]) {
             raw.events.push(egui::Event::Key {
@@ -255,8 +279,23 @@ impl OnAndroid {
                 modifiers: egui::Modifiers::NONE,
             });
         }
-        if !came.is_empty() {
-            raw.events.push(egui::Event::Text(came));
+        // A line break is the keyboard's Enter (its action key, or Enter typed): a key press,
+        // which a one-line text box answers (Add URL's OK), not text.
+        for (k, part) in came.split('\n').enumerate() {
+            if k > 0 {
+                for pressed in [true, false] {
+                    raw.events.push(egui::Event::Key {
+                        key: egui::Key::Enter,
+                        physical_key: None,
+                        pressed,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    });
+                }
+            }
+            if !part.is_empty() {
+                raw.events.push(egui::Event::Text(part.to_owned()));
+            }
         }
         self.typed = now;
     }
