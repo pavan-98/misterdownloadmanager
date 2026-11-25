@@ -482,6 +482,12 @@ fn phone_list(
                     at.max.y - 0.5,
                     egui::Stroke::new(1.0, colors().list_grid),
                 );
+                // A finger held still sends nothing, and egui sees a long press only in a frame
+                // drawn while it is down: frames while a row is held.
+                if r.is_pointer_button_down_on() {
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_millis(100));
+                }
                 if r.double_clicked() {
                     touch.opened = Some(i);
                 } else if r.secondary_clicked() || r.long_touched() {

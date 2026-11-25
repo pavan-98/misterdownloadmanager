@@ -93,6 +93,18 @@ shot 10-back-home
 adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity" > "$out/after-back.txt"
 adb shell am start -W -n "$pkg/com.misterdownloadmanager.android.MainActivity"
 shot 10b-back-again
+# Options: the more menu's Options (146 dp above the screen's content bottom), its list of
+# sections, Save to (the third), then Back to the list and Back to close it.
+adb shell input tap $(( 1080 - $(dp 28) )) $top
+sleep 2
+adb shell input tap 540 1890
+shot 10c-options
+adb shell input tap 540 572
+shot 10d-save-to
+adb shell input keyevent KEYCODE_BACK
+shot 10e-options-again
+adb shell input keyevent KEYCODE_BACK
+sleep 2
 # The activity destroyed as the system may destroy it ("Don't keep activities"), then opened
 # again: the app closes (saving its list) and starts again in the same process.
 adb shell settings put global always_finish_activities 1
