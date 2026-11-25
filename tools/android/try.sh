@@ -115,6 +115,20 @@ shot 10f-shared
 adb shell input keyevent KEYCODE_ENTER
 sleep 8
 shot 10g-shared-done
+# Stop All from the notification: a slow shared download, the shade, its Stop All button (under
+# the notification's line), then the list with the download stopped.
+adb shell am start -W -a android.intent.action.SEND -t text/plain \
+  --es android.intent.extra.TEXT "'http://10.0.2.2:8090/gen/50M/stopme.bin?rate=100K'" \
+  -n "$pkg/com.misterdownloadmanager.android.MainActivity"
+sleep 4
+adb shell input keyevent KEYCODE_ENTER
+sleep 6
+adb shell cmd statusbar expand-notifications
+shot 10h-stop-shade
+adb shell input tap 240 1036
+sleep 3
+adb shell cmd statusbar collapse
+shot 10i-stopped
 # The activity destroyed as the system may destroy it ("Don't keep activities"), then opened
 # again: the app closes (saving its list) and starts again in the same process.
 adb shell settings put global always_finish_activities 1
