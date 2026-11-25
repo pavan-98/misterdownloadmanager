@@ -268,6 +268,12 @@ impl mdm_app::android::Host for JavaHost {
         self.call("toBack", [None; 4]).is_ok()
     }
 
+    fn status(&self, line: &str, stop: &str) {
+        if let Err(e) = self.call("status", [Some(line), Some(stop), None, None]) {
+            log::warn!("the downloads' notification: {e}");
+        }
+    }
+
     fn open(&self, kind: &str, target: &str) -> Result<(), String> {
         self.call("open", [Some(kind), Some(target), None, None])
             .map(|_| ())
@@ -298,4 +304,13 @@ pub extern "system" fn Java_com_misterdownloadmanager_android_MainActivity_nativ
         Ok(())
     })
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+/// `DownloadService.nativeStopAll()`: the downloads' notification's Stop All.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_misterdownloadmanager_android_DownloadService_nativeStopAll(
+    _env: *mut jni::sys::JNIEnv,
+    _this: jni::sys::jobject,
+) {
+    mdm_app::android::stop_all_asked();
 }

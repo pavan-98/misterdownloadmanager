@@ -62,6 +62,7 @@ shot 09-downloading
 # The background notification, in the shade.
 adb shell cmd statusbar expand-notifications
 shot 09b-notification
+adb shell dumpsys notification --noredact | grep -A12 "pkg=$pkg" > "$out/notification.txt" || true
 adb shell cmd statusbar collapse
 sleep 10
 shot 09c-later

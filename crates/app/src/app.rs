@@ -2672,7 +2672,7 @@ impl App {
     }
 
     /// "2 downloading, 1.25 MB/sec" while downloads run (the status strip, the tray's tip).
-    fn activity(&self) -> Option<String> {
+    pub(crate) fn activity(&self) -> Option<String> {
         let running: Vec<&Item> = self.items.iter().filter(|i| i.live.is_some()).collect();
         if running.is_empty() {
             return None;
@@ -4795,7 +4795,7 @@ impl App {
     /// Stop All: everything stops, the queues too (#1164), and nothing starts again by itself.
     /// A running queue's downloads stop with it (not by hand), so starting it again, or its
     /// schedule, goes on with them.
-    fn stop_all(&mut self) {
+    pub(crate) fn stop_all(&mut self) {
         let live = self.items.iter().filter(|i| i.live.is_some()).map(|i| i.id);
         let (queues, ids) = stop_all_plan(&self.queues, live, self.restarts_pending());
         for q in queues {

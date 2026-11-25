@@ -60,6 +60,10 @@ object Platform {
             } else {
                 "err:the locks were refused"
             }
+            "status" -> {
+                DownloadService.status(app, a.orEmpty(), b.orEmpty())
+                "ok:"
+            }
             "open" -> {
                 Opener.open(activity.get() ?: app, a.orEmpty(), b.orEmpty())
                 "ok:"

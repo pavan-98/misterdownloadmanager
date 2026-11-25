@@ -35,6 +35,9 @@ pub trait Host: Send + Sync + 'static {
     /// file, opened by the app set for its type), `chooser` (a file, the system's choice of apps:
     /// Open with) or `folder` (the system's Downloads, as Android has no folder view to give).
     fn open(&self, kind: &str, target: &str) -> Result<(), String>;
+    /// The downloads' notification (while the downloads keep the phone awake): `line` says how
+    /// they go ("2 downloading, 1.25 MB/sec"), and `stop` is its Stop All button's label.
+    fn status(&self, line: &str, stop: &str);
 }
 
 /// [`Host::open`]: a page, a file or a folder handed to Android's apps (`launch::open`, Open and
@@ -157,6 +160,7 @@ pub fn run(
                 ),
                 typed: String::new(),
                 typing: false,
+                told: Told::default(),
             }))
         }),
     );
@@ -173,6 +177,50 @@ static CONTEXT: OnceLock<egui::Context> = OnceLock::new();
 /// Back gestures and Back presses Java has seen since the last frame ([`back_pressed`]).
 #[cfg(target_os = "android")]
 static BACKS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// The notification's Stop All was tapped (`DownloadService`); the next frame stops them.
+#[cfg(target_os = "android")]
+static STOP_ALL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// `DownloadService.nativeStopAll()`: the notification's Stop All ([`STOP_ALL`]).
+#[cfg(target_os = "android")]
+pub fn stop_all_asked() {
+    STOP_ALL.store(true, std::sync::atomic::Ordering::Relaxed);
+    if let Some(ctx) = CONTEXT.get() {
+        ctx.request_repaint();
+    }
+}
+
+/// The downloads' notification, kept up to date ([`Host::status`]): what it last said, and when.
+#[cfg(target_os = "android")]
+#[derive(Default)]
+struct Told {
+    line: Option<String>,
+    at: Option<std::time::Instant>,
+}
+
+#[cfg(target_os = "android")]
+impl Told {
+    /// `line` (the app's activity) to the notification when it changed, at most once a second.
+    fn tell(&mut self, line: Option<String>) {
+        let Some(line) = line else {
+            self.line = None;
+            return;
+        };
+        let due = self
+            .at
+            .is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(1));
+        if self.line.as_ref() == Some(&line) || !due {
+            return;
+        }
+        if let Some(h) = host() {
+            let (stop, _) = crate::chrome::plain(crate::i18n::t("&Stop All"));
+            h.status(&line, &stop);
+        }
+        self.line = Some(line);
+        self.at = Some(std::time::Instant::now());
+    }
+}
 
 /// Where links other apps hand over go ([`links_given`]): the app's command channel and what
 /// wakes it, while the app runs; the links that came while it didn't.
@@ -298,6 +346,8 @@ struct OnAndroid {
     typed: String,
     /// Whether a text box had the keys at the last frame (the keyboard shown for it).
     typing: bool,
+    /// What the downloads' notification says.
+    told: Told,
 }
 
 /// The activity, for its soft keyboard's text (GameActivity's text input state).
@@ -309,6 +359,15 @@ static ACTIVITY: OnceLock<egui_winit::winit::platform::android::activity::Androi
 impl eframe::App for OnAndroid {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         eframe::App::logic(&mut self.app, ctx, frame);
+        // The notification's Stop All, and what the notification says.
+        if STOP_ALL.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            tracing::info!("the notification's Stop All");
+            self.app.stop_all();
+        }
+        self.told.tell(self.app.activity());
+        if self.told.line.is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_secs(1));
+        }
         // The activity's window is gone and no frame is drawn: eframe's logic-only pass gets
         // here, and the closed window ends `run`.
         if ENDING.load(std::sync::atomic::Ordering::SeqCst) {
@@ -656,6 +715,12 @@ mod tests {
         }
         fn to_back(&self) -> bool {
             true
+        }
+        fn status(&self, line: &str, stop: &str) {
+            self.opened
+                .lock()
+                .unwrap()
+                .push(format!("status {line} / {stop}"));
         }
         fn open(&self, kind: &str, target: &str) -> Result<(), String> {
             self.opened.lock().unwrap().push(format!("{kind} {target}"));
