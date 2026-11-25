@@ -322,7 +322,8 @@ impl App {
             self.icons.paint(
                 ui,
                 row.icon.clone(),
-                pos2(winui::mx(at.min.x + indent), at.center().y - 8.0),
+                // An English point: the painter places it (right to left, from the right).
+                pos2(at.min.x + indent, at.center().y - 8.0),
             );
             let label = crate::i18n::t(&row.label);
             ui.painter().text(
@@ -425,14 +426,8 @@ fn phone_list(
                 } else {
                     egui::Align2::LEFT_CENTER
                 };
-                icons.paint(
-                    ui,
-                    row.icon.clone(),
-                    pos2(
-                        x(PAD) - if winui::rtl() { 16.0 } else { 0.0 },
-                        at.min.y + 14.0,
-                    ),
-                );
+                // An English point: the painter places it (right to left, from the right).
+                icons.paint(ui, row.icon.clone(), pos2(at.min.x + PAD, at.min.y + 14.0));
                 let text_x = PAD + 16.0 + 12.0;
                 let text_w = width - text_x - PAD;
                 let name = elide(ui, &row.cells[0], font(16.0), text_w);
