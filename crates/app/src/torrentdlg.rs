@@ -418,7 +418,15 @@ impl TorrentDialog {
             ctx,
             "add-torrent",
             "Add torrent",
-            [600.0, 512.0],
+            // A phone's page width (phone.rs), the desktop's 600 pt window.
+            [
+                if crate::app::phone::active(ctx) {
+                    crate::app::phone::sheet_width(ctx)
+                } else {
+                    600.0
+                },
+                512.0,
+            ],
             false,
             winui::BG(),
             |ui, o| self.body(ui, o, rt, allow_subfolder_choice),
@@ -533,6 +541,12 @@ impl TorrentDialog {
         allow_subfolder_choice: bool,
     ) -> Outcome<()> {
         let p = ui.painter().clone();
+        // The right edge: the desktop's 600 pt window less its margin; a phone's page (phone.rs).
+        let right = if crate::app::phone::active(ui.ctx()) {
+            crate::app::phone::sheet_width(ui.ctx()) - 11.0
+        } else {
+            589.0
+        };
         let busy = self.lookup.is_some();
         let kind = |on: bool, default: bool| match (on, default) {
             (false, _) => ButtonKind::Disabled,
@@ -550,18 +564,21 @@ impl TorrentDialog {
         text(&p, o.x + 11.0, o.y + 23.0, source_label, winui::TEXT());
         let edit = winui::edit(
             ui,
-            r(o, fx, 9.0, 480.0 - fx, 21.0),
+            r(o, fx, 9.0, right - 109.0 - fx, 21.0),
             &mut self.source,
             !busy,
             false,
         );
+        // The keys in the source box, not on a phone (its keyboard would cover the page).
         if !self.focused {
-            edit.request_focus();
+            if !crate::app::phone::active(ui.ctx()) {
+                edit.request_focus();
+            }
             self.focused = true;
         }
         let browse = winui::button(
             ui,
-            r(o, 486.0, 9.0, 22.0, 21.0),
+            r(o, right - 103.0, 9.0, 22.0, 21.0),
             "...",
             kind(!busy, false),
             false,
@@ -586,7 +603,7 @@ impl TorrentDialog {
         // While it looks up, the button stops it (a magnet with no peers took up to 3 minutes).
         let look = winui::button(
             ui,
-            r(o, 514.0, 9.0, 75.0, 21.0),
+            r(o, right - 75.0, 9.0, 75.0, 21.0),
             // i18n: button: stop looking the torrent up
             if busy {
                 crate::i18n::mark("Stop")
@@ -634,7 +651,7 @@ impl TorrentDialog {
             };
             text(&p, o.x + 31.0, line, &msg, winui::TEXT());
         } else if let Some(e) = shown_err {
-            let (rect, cut) = winui::text_fit(&p, o.x + 11.0, line, e, winui::ERROR(), o.x + 589.0);
+            let (rect, cut) = winui::text_fit(&p, o.x + 11.0, line, e, winui::ERROR(), o.x + right);
             if cut {
                 winui::full_on_hover(ui, rect, "torrent-error", e);
             }
@@ -659,13 +676,13 @@ impl TorrentDialog {
             };
             crate::fileicons::paint_at(ui, &p, kind, egui::pos2(o.x + 11.0, line - 12.0), 16.0);
             let x = o.x + 11.0 + crate::fileicons::INDENT;
-            let (rect, cut) = winui::text_fit(&p, x, line, &summary, winui::TEXT(), o.x + 589.0);
+            let (rect, cut) = winui::text_fit(&p, x, line, &summary, winui::TEXT(), o.x + right);
             if cut {
                 winui::full_on_hover(ui, rect, "torrent-name", &summary);
             }
         }
 
-        self.file_list(ui, r(o, 11.0, 58.0, 578.0, 262.0));
+        self.file_list(ui, r(o, 11.0, 58.0, right - 11.0, 262.0));
 
         // Select all / none, each as wide as its label in this language (#192), and what is chosen.
         let has = self.meta.is_some();
@@ -707,7 +724,7 @@ impl TorrentDialog {
         if has {
             winui::text_right(
                 &p,
-                o.x + 589.0,
+                o.x + right,
                 o.y + 343.0,
                 &crate::i18n::fmt(
                     // i18n: the files chosen: {files} = "3 files", {size} = their total size
@@ -728,7 +745,7 @@ impl TorrentDialog {
         text(&p, o.x + 11.0, o.y + 375.0, folder_label, winui::TEXT());
         if winui::edit(
             ui,
-            r(o, fx, 361.0, 561.0 - fx, 21.0),
+            r(o, fx, 361.0, right - 28.0 - fx, 21.0),
             &mut self.folder,
             true,
             false,
@@ -739,7 +756,7 @@ impl TorrentDialog {
         }
         if winui::button(
             ui,
-            r(o, 567.0, 361.0, 22.0, 21.0),
+            r(o, right - 22.0, 361.0, 22.0, 21.0),
             "...",
             ButtonKind::Normal,
             false,
@@ -764,7 +781,7 @@ impl TorrentDialog {
             // i18n: Add torrent: keep a multi-file torrent inside its own outer folder; untick to use Save to directly
             "Create a folder for this torrent",
             has && self.rename.is_dir && !busy && allow_subfolder_choice,
-            Some(o.x + 589.0),
+            Some(o.x + right),
         );
         let create = winui::why_disabled(
             create,
@@ -784,6 +801,7 @@ impl TorrentDialog {
             &p,
             o,
             fx,
+            right,
             417.0,
             has && can_rename,
             busy,
@@ -805,7 +823,7 @@ impl TorrentDialog {
                 &[("folder", &crate::i18n::ltr(&goes.display().to_string()))],
             );
             let (rect, cut) =
-                winui::text_fit(&p, o.x + fx, o.y + 454.0, &s, winui::MUTED(), o.x + 589.0);
+                winui::text_fit(&p, o.x + fx, o.y + 454.0, &s, winui::MUTED(), o.x + right);
             if cut {
                 winui::full_on_hover(ui, rect, "torrent-goes", &s);
             }
@@ -814,7 +832,7 @@ impl TorrentDialog {
         // The bottom row, each button as wide as its label in this language (#192).
         let [now_at, later_at, cancel_at] = winui::buttons_to_right(
             &p,
-            589.0,
+            right,
             6.0,
             &[("Download Now", 105.0), ("Later", 91.0), ("Cancel", 91.0)],
             160.0,
