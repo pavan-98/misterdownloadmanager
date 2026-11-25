@@ -33,5 +33,14 @@ class MainActivity : GameActivity() {
         })
     }
 
+    override fun onDestroy() {
+        // GameActivity's destruction waits for the app's thread to end: the app is told first,
+        // and closes (saving the list, as Exit does).
+        nativeEnding()
+        super.onDestroy()
+    }
+
     private external fun nativeBack()
+
+    private external fun nativeEnding()
 }

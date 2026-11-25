@@ -127,3 +127,13 @@ pub extern "system" fn Java_com_misterdownloadmanager_android_MainActivity_nativ
 ) {
     mdm_app::android::back_pressed();
 }
+
+/// `MainActivity.nativeEnding()`: the activity is being destroyed. Its native side then waits for
+/// `android_main` to return, so the app closes first (`mdm_app::android::activity_ending`).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_misterdownloadmanager_android_MainActivity_nativeEnding(
+    _env: *mut jni::sys::JNIEnv,
+    _this: jni::sys::jobject,
+) {
+    mdm_app::android::activity_ending();
+}

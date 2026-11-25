@@ -6,6 +6,10 @@ set -u
 out=try-out
 mkdir -p "$out"
 pkg=com.misterdownloadmanager.android.debug
+# The system fully up (its BOOT_COMPLETED sent, the setup wizard gone) before the app starts.
+until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
+sleep 30
+adb shell input keyevent KEYCODE_HOME
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 adb shell wm size > "$out/screen.txt"
 adb shell wm density >> "$out/screen.txt"
@@ -38,6 +42,15 @@ adb shell input text "https://example.com/file.zip"
 shot 07-typed
 adb shell input keyevent KEYCODE_BACK
 shot 08-closed
+# The activity destroyed as the system may destroy it ("Don't keep activities"), then opened
+# again: the app closes (saving its list) and starts again in the same process.
+adb shell settings put global always_finish_activities 1
+adb shell input keyevent KEYCODE_HOME
+sleep 8
+adb shell am start -W -n "$pkg/com.misterdownloadmanager.android.MainActivity"
+sleep 15
+shot 09-reopened
+adb shell settings put global always_finish_activities 0
 adb shell pidof "$pkg" > "$out/pid.txt" || echo "not running" > "$out/pid.txt"
 adb logcat -d > "$out/logcat.txt"
 adb shell run-as "$pkg" cat files/mdm/logs/mdm.log > "$out/mdm.log" 2>/dev/null || true

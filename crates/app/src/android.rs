@@ -63,10 +63,16 @@ pub fn run(
         let _ = std::fs::write(at.join("crash.log"), format!("{info}\n\n{bt}"));
         default_hook(info);
     }));
-    // Android may start the activity again in the same process: the list is the first run's
-    // until it has ended.
+    // Android may start the activity again in the same process (opened again after Back, or
+    // after the system destroyed it): this run waits for the last one to have ended (its
+    // activity's destruction ends it, [`activity_ending`]) and saved the list.
+    static ONE_RUN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _one = ONE_RUN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    ENDING.store(false, std::sync::atomic::Ordering::SeqCst);
     let Some(_instance) = mdm_ipc::instance_lock() else {
-        return Err(no_start("the app is already running in this process"));
+        return Err(no_start("the data folder is in use"));
     };
     crate::clock::start();
     crate::theme::prepare_fonts();
@@ -140,6 +146,22 @@ pub fn back_pressed() {
     }
 }
 
+/// The activity is being destroyed ([`activity_ending`]): the app closes as Exit closes it.
+#[cfg(target_os = "android")]
+static ENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The activity is being destroyed (the user closed it, or the system reclaims it): Android waits
+/// for the app's thread to end before it goes on, so the app closes now, saving the list and
+/// stopping its downloads where they are as Exit does. Called before the activity's own
+/// destruction, which waits.
+#[cfg(target_os = "android")]
+pub fn activity_ending() {
+    ENDING.store(true, std::sync::atomic::Ordering::SeqCst);
+    if let Some(ctx) = CONTEXT.get() {
+        ctx.request_repaint();
+    }
+}
+
 /// The app as eframe runs it on Android: Back is Esc, which closes the window in front as on the
 /// desktop. A key's Back (a keyboard's, an emulator's KEYCODE_BACK) comes to the window as
 /// winit's BrowserBack; the gesture's through [`back_pressed`].
@@ -150,6 +172,12 @@ struct OnAndroid(crate::app::App);
 impl eframe::App for OnAndroid {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         eframe::App::logic(&mut self.0, ctx, frame);
+        // The activity's window is gone and no frame is drawn: eframe's logic-only pass gets
+        // here, and the closed window ends `run`.
+        if ENDING.load(std::sync::atomic::Ordering::SeqCst) {
+            tracing::info!("the activity is being destroyed: closing");
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
