@@ -50,7 +50,7 @@ shot 05b-more-closed
 # Add URL (the bottom bar's first of four buttons), an address typed in it.
 adb shell input tap 135 $bottom
 shot 06-add-url
-adb shell input text "'http://10.0.2.2:8090/gen/100M/100Mb.dat?rate=1M'"
+adb shell input text "'http://10.0.2.2:8090/gen/100M/100Mb.dat?rate=300K'"
 shot 07-typed
 # Enter: OK (Add URL's default button), then Download File Info's Start Download.
 adb shell input keyevent KEYCODE_ENTER
