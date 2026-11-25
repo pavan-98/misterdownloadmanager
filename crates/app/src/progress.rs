@@ -594,7 +594,14 @@ impl Progress {
             .with_resizable(cfg!(windows))
             .with_icon(crate::app_icon())
             .with_maximize_button(false);
-        if let Some(p) = crate::dialogs::place(ctx, key, [548.0, 412.0 + drop]) {
+        if crate::app::phone::active(ctx) {
+            // A phone: a sheet over the whole window (phone.rs), its contents scrolled.
+            let room = ctx.content_rect();
+            builder = builder.with_position(room.min).with_inner_size([
+                room.width(),
+                room.height() - crate::app::phone::SHEET_TITLE_H,
+            ]);
+        } else if let Some(p) = crate::dialogs::place(ctx, key, [548.0, 412.0 + drop]) {
             builder = builder.with_position(p);
         }
         // Minimize hides it in the notification area when asked (and a tray can bring it back).

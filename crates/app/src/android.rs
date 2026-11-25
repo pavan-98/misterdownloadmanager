@@ -88,7 +88,14 @@ pub fn run(
     let _ = mdm_ipc::serve(tx, move || wake());
     let rt = tokio::runtime::Runtime::new().map_err(|e| no_start(&e.to_string()))?;
     let handle = rt.handle().clone();
-    let loaded = crate::store::load();
+    let mut loaded = crate::store::load();
+    // A phone's first start: the list's rows show each download's progress, and the system's
+    // notification its end; the desktop's progress and "Download complete" windows, which would
+    // cover the whole screen there, open only when asked for (Options can have them back).
+    if loaded.items.is_empty() && !loaded.settings.language_asked {
+        loaded.settings.show_progress = false;
+        loaded.settings.show_complete = false;
+    }
     let z = crate::scale::startup(loaded.settings.interface_size);
     mdm_crash::logs::init(&data, mdm_crash::logs::APP);
     tracing::info!(

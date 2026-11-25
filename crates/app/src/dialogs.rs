@@ -2095,7 +2095,9 @@ impl FileInfo {
                 lay.server_label.draw(&p, o, crate::i18n::t("Server"));
                 let (sx, sy) = (o.x + lay.server.x, o.y + lay.server.y);
                 match &self.info {
-                    None => crate::whereis::line(ui, sx, sy, o.x + lay.right, None, &own(FILE_INFO)),
+                    None => {
+                        crate::whereis::line(ui, sx, sy, o.x + lay.right, None, &own(FILE_INFO))
+                    }
                     Some(Ok(pi)) => {
                         if let Some(server) = &pi.server {
                             let seen = crate::whereis::Seen::from(server);
