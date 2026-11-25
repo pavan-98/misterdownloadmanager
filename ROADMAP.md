@@ -2130,8 +2130,12 @@ These ship in a later version, when they're ready.
 - 🔄 The Safari extension (in 0.5.2): still to check in Safari itself, signed with a Developer ID
 - 🔄 **An Android app** on MDM's own engine and interface, landing in three parts
   ([PR #1259](https://github.com/anefzaoui/misterdownloadmanager/pull/1259)): the shared crates
-  building for Android, the desktop unchanged (in review); the app itself, MDM's interface in a
-  phone layout with its downloads kept running in the background; then its build and releases
+  building for Android, the desktop unchanged (done,
+  [#1765](https://github.com/anefzaoui/misterdownloadmanager/pull/1765)); the app itself, MDM's
+  interface in a phone layout with its downloads kept running in the background (being built:
+  the main screen, its dialogs as pages, the downloads' notification with Stop All, links and
+  `.torrent` files shared to MDM, opening finished files with Android's apps); then its build
+  and releases
 
 ### Bugs being looked into
 
