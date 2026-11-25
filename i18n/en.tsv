@@ -443,7 +443,7 @@
 #. text in remote.rs
 #. remote control page (on a phone): tab: every download
 	All	All
-#. item in the Categories tree in the main window
+#. item in the Categories tree in the main window; text in phone.rs
 	All Downloads	All Downloads
 #. message or event log entry in the main window; text in standard windows
 	All files	All files
@@ -760,6 +760,7 @@
 #. page title in the Options window
 	Categories, file types, folders	Categories, file types, folders
 #. text in a dialog box; text in the Options window; text in remote.rs
+#. noun: label before the list of categories
 #. remote control page (on a phone): label of the category choice for a new download
 	Category	Category
 #. text in categories.rs; text in a dialog box
@@ -6597,9 +6598,9 @@ menubar	&View	&View
 pane	Preview	Preview
 #. toolbar button in the main window
 toolbar	Add Torrent	Add Torrent
-#. toolbar button in the main window
+#. toolbar button in the main window; toolbar button in phone.rs
 toolbar	Add URL	Add URL
-#. toolbar button in the main window
+#. toolbar button in the main window; toolbar button in phone.rs
 #. verb: delete the selected downloads
 toolbar	Delete	Delete
 #. toolbar button in the main window
@@ -6610,7 +6611,7 @@ toolbar	Options	Options
 #. toolbar button in the main window
 #. toolbar toggle button: shows or hides the preview pane (the selected download's picture and details)
 toolbar	Preview	Preview
-#. toolbar button in the main window
+#. toolbar button in the main window; toolbar button in phone.rs
 #. verb: continue the selected downloads
 toolbar	Resume	Resume
 #. toolbar button in the main window
@@ -6618,7 +6619,7 @@ toolbar	Resume	Resume
 toolbar	Scheduler	Scheduler
 #. toolbar button in the main window
 toolbar	Start Queue	Start Queue
-#. toolbar button in the main window
+#. toolbar button in the main window; toolbar button in phone.rs
 #. verb: stop the selected downloads
 toolbar	Stop	Stop
 #. toolbar button in the main window

@@ -252,6 +252,8 @@ pub struct OptionsDialog {
     /// The settings it opened with: OK applies only what changed from them.
     pub from: Settings,
     page: usize,
+    /// A phone (phone.rs): a section's page is open, else the list of sections is shown.
+    phone_section: bool,
     /// The browsers check list's scroll and selection.
     browser_rows: winui::RowList,
     category: usize,
@@ -402,6 +404,7 @@ impl OptionsDialog {
             hours: s.limits_hours.to_string(),
             s,
             page: 0,
+            phone_section: false,
             category: 0,
             exc_rows: Default::default(),
             login_rows: Default::default(),
@@ -437,19 +440,43 @@ impl OptionsDialog {
         if modal || self.page != 0 {
             self.recording_hotkey = false;
         }
+        // A phone (phone.rs): the sections as a list of rows, each opening its page.
+        let phone = crate::app::phone::active(ctx);
+        let listing = phone && !self.phone_section;
+        let client = if listing {
+            let rows = PHONE_SECTIONS.len() as f32;
+            [
+                crate::app::phone::sheet_width(ctx),
+                rows * PHONE_ROW + 16.0 + 60.0,
+            ]
+        } else {
+            [430.0, 506.0]
+        };
         let outcome = window(
             ctx,
             "options",
             "Mister Download Manager Configuration",
-            [430.0, 506.0],
+            client,
             false,
             LIGHT_BG(),
             |ui, o| {
+                if listing {
+                    return self.phone_list(ui, o, client[0]);
+                }
+                if phone {
+                    // The section's name over its page, where the tabs were: a tap, or Back,
+                    // goes back to the list.
+                    if phone_back(ui, o, self.page) || winui::take_key(ui, egui::Key::Escape) {
+                        self.phone_section = false;
+                        return Outcome::Open;
+                    }
+                }
                 // Ctrl+Tab through the pages in the tabs' order (Archives, 10, came last).
                 const ORDER: [usize; 12] = [0, 1, 2, 3, 4, 11, 5, 6, 7, 8, 9, 10];
                 let at = ORDER.iter().position(|p| *p == self.page).unwrap_or(0);
                 let by_key = winui::tab_keys(ui, ORDER.len(), at).map(|i| ORDER[i]);
-                if let Some(p) = tabs(ui, o, self.page).or(by_key) {
+                let tabbed = if phone { None } else { tabs(ui, o, self.page) };
+                if let Some(p) = tabbed.or(by_key) {
                     self.page = p;
                 }
                 match self.page {
@@ -467,23 +494,26 @@ impl OptionsDialog {
                     8 => self.sounds(ui, o),
                     _ => self.regional(ui, o),
                 }
-                let ok = winui::button_light(
-                    ui,
-                    r(o, 269.0, 477.0, 73.0, 21.0),
-                    "OK",
-                    ButtonKind::Default,
-                    false,
-                )
-                .clicked();
-                if winui::button_light(
-                    ui,
-                    r(o, 350.0, 477.0, 73.0, 21.0),
-                    // i18n: noun: button that opens the help
-                    "Help",
-                    ButtonKind::Normal,
-                    false,
-                )
-                .clicked()
+                // A phone's OK is under its list of sections (`phone_list`).
+                let ok = !phone
+                    && winui::button_light(
+                        ui,
+                        r(o, 269.0, 477.0, 73.0, 21.0),
+                        "OK",
+                        ButtonKind::Default,
+                        false,
+                    )
+                    .clicked();
+                if !phone
+                    && winui::button_light(
+                        ui,
+                        r(o, 350.0, 477.0, 73.0, 21.0),
+                        // i18n: noun: button that opens the help
+                        "Help",
+                        ButtonKind::Normal,
+                        false,
+                    )
+                    .clicked()
                 {
                     crate::help::open_page("options.md");
                 }
@@ -5283,6 +5313,123 @@ fn tab_row(
 }
 
 /// The two-row tab strip and the page frame; returns the page clicked.
+/// The sections a phone lists (page, tab title), in the tabs' order. Not on Android: Sounds (no
+/// sound player there yet) and Remote (no desktop browser add-on to pair with a phone's MDM).
+const PHONE_SECTIONS: [(usize, &str); 10] = [
+    (0, "General"),
+    (1, "File types"),
+    (2, "Save to"),
+    (3, "Downloads"),
+    (4, "Connection"),
+    (5, "Proxy / Socks"),
+    (6, "Sites Logins"),
+    (7, "Accounts"),
+    (9, "Regional"),
+    (10, "Archives"),
+];
+
+/// A row of the phone's list of sections.
+const PHONE_ROW: f32 = 52.0;
+
+impl OptionsDialog {
+    /// A phone's Options (phone.rs): its sections as rows a finger can hit, each opening its page
+    /// ([`PHONE_SECTIONS`]); OK and Cancel under them.
+    fn phone_list(&mut self, ui: &mut Ui, o: Pos2, width: f32) -> Outcome<()> {
+        let p = ui.painter().clone();
+        let mut y = 8.0;
+        for (page, label) in PHONE_SECTIONS {
+            let row = r(o, 0.0, y, width, PHONE_ROW);
+            let resp = ui.interact(
+                row,
+                egui::Id::unique(("options-section", page)),
+                egui::Sense::click(),
+            );
+            if resp.is_pointer_button_down_on() {
+                p.rect_filled(row, 0.0, crate::theme::colors().toolbar_pressed);
+            }
+            let text = crate::i18n::t(label);
+            winui::expose(&resp, egui::Role::Button, text, true, None);
+            winui::text_font(
+                &p,
+                egui::FontId::new(16.0, winui::tahoma().family),
+                o.x + 16.0,
+                o.y + y + PHONE_ROW / 2.0 + 6.0,
+                text,
+                winui::TEXT(),
+            );
+            winui::text_font(
+                &p,
+                egui::FontId::new(16.0, winui::tahoma().family),
+                o.x + width - 28.0,
+                o.y + y + PHONE_ROW / 2.0 + 6.0,
+                if crate::i18n::rtl() { "‹" } else { "›" },
+                winui::MUTED(),
+            );
+            p.hline(
+                winui::rect(r(o, 16.0, y + PHONE_ROW - 1.0, width - 16.0, 1.0)).x_range(),
+                o.y + y + PHONE_ROW - 0.5,
+                egui::Stroke::new(1.0, winui::HEADER_LINE()),
+            );
+            if resp.clicked() {
+                self.page = page;
+                self.phone_section = true;
+            }
+            y += PHONE_ROW;
+        }
+        y += 16.0;
+        let half = (width - 32.0 - 8.0) / 2.0;
+        let ok = winui::button_light(
+            ui,
+            r(o, 16.0, y, half, 44.0),
+            "OK",
+            ButtonKind::Default,
+            false,
+        )
+        .clicked();
+        let cancel = winui::button_light(
+            ui,
+            r(o, 16.0 + half + 8.0, y, half, 44.0),
+            "Cancel",
+            ButtonKind::Normal,
+            false,
+        )
+        .clicked();
+        if cancel || winui::escape_pressed(ui) {
+            Outcome::Closed
+        } else if ok {
+            Outcome::Done(())
+        } else {
+            Outcome::Open
+        }
+    }
+}
+
+/// On a phone, over a section's page where the tabs were: "‹ Section", which goes back to the
+/// list of sections. True when tapped.
+fn phone_back(ui: &mut Ui, o: Pos2, page: usize) -> bool {
+    let label = PHONE_SECTIONS
+        .iter()
+        .find(|(p, _)| *p == page)
+        .map_or("General", |(_, l)| *l);
+    let row = r(o, 0.0, 0.0, 430.0, 40.0);
+    let resp = ui.interact(row, egui::Id::unique("options-back"), egui::Sense::click());
+    let text = format!(
+        "{}  {}",
+        if crate::i18n::rtl() { "›" } else { "‹" },
+        crate::i18n::t(label)
+    );
+    winui::expose(&resp, egui::Role::Button, &text, true, None);
+    winui::text_font(
+        &ui.painter().clone(),
+        egui::FontId::new(16.0, winui::tahoma().family),
+        o.x + 12.0,
+        o.y + 26.0,
+        &text,
+        winui::TEXT(),
+    );
+    resp.clicked()
+}
+
 fn tabs(ui: &mut Ui, o: Pos2, page: usize) -> Option<usize> {
     // (page, label, x0, x1, label x): the rows never move sideways, only swap front and back.
     // Remote (#141, ours) joins the first row, which is sized by its labels since.

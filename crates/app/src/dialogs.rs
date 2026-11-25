@@ -1115,11 +1115,11 @@ impl AddUrl {
                 } else {
                     winui::TEXT_DISABLED()
                 };
-                // i18n: noun: the user name and password section
                 winui::text(
                     &p,
                     o.x + at.login_label.x,
                     o.y + at.login_label.y,
+                    // i18n: noun: the user name and password section
                     crate::i18n::t("Login"),
                     label,
                 );
