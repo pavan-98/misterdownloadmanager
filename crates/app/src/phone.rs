@@ -172,17 +172,11 @@ impl App {
             self.view = view;
         }
 
-        // A row's menu, the "more" menu, a node's: as the desktop's popups.
-        if let Some((kind, pos, serial)) = self.popup {
+        // A row's menu, the "more" menu, a node's: the desktop's entries, in a sheet from the
+        // bottom with rows a finger can hit ([`menu_sheet`]).
+        if let Some((kind, _, serial)) = self.popup {
             let (entries, target) = self.popup_entries(kind);
-            match chrome::popup(
-                &ctx,
-                MenuKind::Context,
-                &format!("popup-{serial}"),
-                pos,
-                &entries,
-                &|c: &Cmd| c.hint(),
-            ) {
+            match menu_sheet(ui, full, &entries, serial) {
                 PopupResult::Open | PopupResult::Neighbor(_) => {}
                 PopupResult::Chosen(c) => {
                     chosen = Some((c, target));
@@ -512,4 +506,197 @@ fn bottom_button(ui: &mut Ui, at: egui::Rect, icon: Icon, label: &str, enabled: 
         },
     );
     enabled && r.clicked()
+}
+
+/// A menu row's height in the sheet: Android's list item.
+const MENU_ROW_H: f32 = 48.0;
+
+/// `entries` (a popup menu of the desktop's) as a sheet over the bottom of `full`, one row a
+/// finger can hit for each, under a dimmed window: a tap runs an item, opens a submenu in the
+/// sheet's place (a first row goes back), or outside the sheet closes it, as Back does. Which
+/// submenu is open is kept for menu `serial`.
+fn menu_sheet<C: Clone>(
+    ui: &mut Ui,
+    full: egui::Rect,
+    entries: &[MenuEntry<C>],
+    serial: u64,
+) -> PopupResult<C> {
+    let ctx = ui.ctx().clone();
+    let path_id = egui::Id::unique(("phone-menu-path", serial));
+    let mut path: Vec<usize> = ctx.data(|d| d.get_temp(path_id)).unwrap_or_default();
+    // The entries of the open submenu, and its title.
+    let mut here = entries;
+    let mut title: Option<&str> = None;
+    for &k in &path {
+        match here.get(k) {
+            Some(MenuEntry::Sub(label, _, children)) => {
+                title = Some(label);
+                here = children;
+            }
+            _ => break,
+        }
+    }
+    let rows = here.len() + usize::from(title.is_some());
+    let height = (rows as f32 * MENU_ROW_H + 16.0).min(full.height() * 0.85);
+    let sheet = egui::Rect::from_min_max(pos2(full.min.x, full.max.y - height), full.max);
+    let scrim = ui.interact(
+        full,
+        egui::Id::unique(("phone-menu-scrim", serial)),
+        egui::Sense::click(),
+    );
+    ui.painter()
+        .rect_filled(full, 0.0, egui::Color32::from_black_alpha(110));
+    ui.painter().rect_filled(
+        sheet,
+        egui::CornerRadius {
+            nw: 16,
+            ne: 16,
+            sw: 0,
+            se: 0,
+        },
+        colors().menu,
+    );
+    let mut result = PopupResult::Open;
+    let mut inside =
+        ui.new_child(egui::UiBuilder::new().max_rect(sheet.shrink2(egui::vec2(0.0, 8.0))));
+    egui::ScrollArea::vertical()
+        .id_salt(("phone-menu", serial, path.len()))
+        .auto_shrink([false, false])
+        .show(&mut inside, |ui| {
+            let width = ui.max_rect().width();
+            if let Some(title) = title {
+                let (at, r) =
+                    ui.allocate_exact_size(egui::vec2(width, MENU_ROW_H), egui::Sense::click());
+                menu_row(
+                    ui,
+                    at,
+                    &format!("‹  {}", menu_label(title)),
+                    true,
+                    false,
+                    false,
+                    &r,
+                );
+                if r.clicked() {
+                    path.pop();
+                }
+            }
+            for (k, e) in here.iter().enumerate() {
+                if let MenuEntry::Sep = e {
+                    let (at, _) =
+                        ui.allocate_exact_size(egui::vec2(width, 9.0), egui::Sense::hover());
+                    ui.painter().hline(
+                        at.shrink2(egui::vec2(PAD, 0.0)).x_range(),
+                        at.center().y,
+                        egui::Stroke::new(1.0, colors().menu_sep),
+                    );
+                    continue;
+                }
+                let (label, enabled, checked, sub) = match e {
+                    MenuEntry::Item(l, _, en, ch) | MenuEntry::Radio(l, _, en, ch) => {
+                        (*l, *en, *ch, false)
+                    }
+                    MenuEntry::Sub(l, en, _) => (*l, *en, false, true),
+                    MenuEntry::Sep => unreachable!(),
+                };
+                let sense = if enabled {
+                    egui::Sense::click()
+                } else {
+                    egui::Sense::hover()
+                };
+                let (at, r) = ui.allocate_exact_size(egui::vec2(width, MENU_ROW_H), sense);
+                menu_row(ui, at, &menu_label(label), enabled, checked, sub, &r);
+                if enabled && r.clicked() {
+                    match e {
+                        MenuEntry::Item(_, c, ..) | MenuEntry::Radio(_, c, ..) => {
+                            result = PopupResult::Chosen(c.clone());
+                        }
+                        MenuEntry::Sub(..) => path.push(k),
+                        MenuEntry::Sep => {}
+                    }
+                }
+            }
+        });
+    let outside = scrim.clicked()
+        && !scrim
+            .interact_pointer_pos()
+            .is_some_and(|p| sheet.contains(p));
+    // Back: out of the submenu, else the menu closes.
+    let back = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+    if back && !path.is_empty() {
+        path.pop();
+    } else if back || outside {
+        result = PopupResult::Dismissed;
+    }
+    if matches!(result, PopupResult::Open) {
+        ctx.data_mut(|d| d.insert_temp(path_id, path));
+    } else {
+        ctx.data_mut(|d| d.remove::<Vec<usize>>(path_id));
+    }
+    result
+}
+
+/// A menu's label in the interface language, without its access letter's `&`.
+fn menu_label(label: &str) -> String {
+    chrome::plain(crate::i18n::tc("menu", label)).0
+}
+
+/// One row of [`menu_sheet`] at `at` (screen): its label, a check mark when checked, an arrow
+/// when it opens a submenu.
+fn menu_row(
+    ui: &Ui,
+    at: egui::Rect,
+    label: &str,
+    enabled: bool,
+    checked: bool,
+    sub: bool,
+    r: &egui::Response,
+) {
+    let p = ui.painter();
+    if enabled && r.is_pointer_button_down_on() {
+        p.rect_filled(at, 0.0, colors().menu_hot);
+    }
+    let ink = if enabled {
+        colors().menu_text
+    } else {
+        colors().menu_text_disabled
+    };
+    let rtl = winui::rtl();
+    let lead = if rtl { at.max.x - PAD } else { at.min.x + PAD };
+    let trail = if rtl { at.min.x + PAD } else { at.max.x - PAD };
+    let dir = if rtl { -1.0 } else { 1.0 };
+    let text_x = lead + dir * 28.0;
+    p.text(
+        pos2(text_x, at.center().y),
+        if rtl {
+            egui::Align2::RIGHT_CENTER
+        } else {
+            egui::Align2::LEFT_CENTER
+        },
+        label,
+        font(16.0),
+        ink,
+    );
+    let stroke = egui::Stroke::new(2.0, ink);
+    if checked {
+        let c = pos2(lead + dir * 9.0, at.center().y);
+        p.line_segment(
+            [
+                c + egui::vec2(-6.0 * dir, 0.0),
+                c + egui::vec2(-2.0 * dir, 4.0),
+            ],
+            stroke,
+        );
+        p.line_segment(
+            [
+                c + egui::vec2(-2.0 * dir, 4.0),
+                c + egui::vec2(6.0 * dir, -5.0),
+            ],
+            stroke,
+        );
+    }
+    if sub {
+        let c = pos2(trail - dir * 4.0, at.center().y);
+        p.line_segment([c + egui::vec2(-4.0 * dir, -6.0), c], stroke);
+        p.line_segment([c, c + egui::vec2(-4.0 * dir, 6.0)], stroke);
+    }
 }

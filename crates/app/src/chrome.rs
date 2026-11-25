@@ -423,7 +423,7 @@ pub fn menu_letter(label: &str) -> String {
         .unwrap_or_default()
 }
 
-fn plain(label: &str) -> (String, Option<usize>) {
+pub(crate) fn plain(label: &str) -> (String, Option<usize>) {
     let mut out = String::new();
     let mut mnemonic = None;
     let mut chars = label.chars().peekable();
