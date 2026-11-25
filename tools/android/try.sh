@@ -19,7 +19,7 @@ adb shell wm size > "$out/screen.txt"
 adb shell wm density >> "$out/screen.txt"
 # MDM's lab server on the runner, reached from the emulator at 10.0.2.2: a 100 MB file at 1 MB/s
 # a connection, so the download is still running for the first screenshots.
-target/release/mdm-labserver --bind 0.0.0.0:8090 --log-file "$out/lab.jsonl" \
+target/release/labserver --bind 0.0.0.0:8090 --log-file "$out/lab.jsonl" \
   > /dev/null 2> "$out/lab.err" &
 lab=$!
 sleep 2
