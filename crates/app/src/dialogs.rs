@@ -1961,9 +1961,13 @@ impl FileInfo {
                 lay.save_label.draw(&p, o, crate::i18n::t("Save As"));
                 let save_rc = lay.save.translate(v);
                 let save = winui::combo_edit(ui, save_rc, &mut self.save_as);
-                // Opened, the keys are in Save As (its name is what one changes here).
+                // Opened, the keys are in Save As (its name is what one changes here). Not on a
+                // phone, where its keyboard would cover the page and Start Download (a tap on the
+                // box brings it).
                 if !self.focused {
-                    save.request_focus();
+                    if !crate::app::phone::active(ui.ctx()) {
+                        save.request_focus();
+                    }
                     self.focused = true;
                 }
                 if save.changed() {
