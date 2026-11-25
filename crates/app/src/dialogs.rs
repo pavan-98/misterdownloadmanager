@@ -3597,11 +3597,20 @@ impl ConfirmDelete {
         let extra = grow_extra(ctx, "confirm-delete");
         // The finished files' line under the box, while it is ticked (#1563).
         let warned = grow_extra(ctx, "confirm-delete-finished");
+        // A phone (phone.rs): the page's width, Yes and No side by side and finger-sized under
+        // "Don't show this dialog again".
+        let phone = crate::app::phone::active(ctx);
+        let wide = if phone {
+            crate::app::phone::sheet_width(ctx)
+        } else {
+            374.0
+        };
+        let tall = if phone { 180.0 } else { 146.0 };
         question(
             ctx,
             "confirm-delete",
             "Confirm deletion of downloads",
-            [374.0, 146.0 + extra + warned],
+            [wide, tall + extra + warned],
             false,
             winui::LIGHT_BG(),
             |ui, o| {
@@ -3636,8 +3645,8 @@ it from Mister Download Manager list of downloads?",
                         &[("n", &crate::i18n::integer(n))],
                     )
                 };
-                let lines =
-                    winui::paragraph(&p, o.x + 11.0, o.y + 21.0, &text, black, o.x + 362.0, 13.0);
+                let right = o.x + wide - 12.0;
+                let lines = winui::paragraph(&p, o.x + 11.0, o.y + 21.0, &text, black, right, 13.0);
                 grow_to(ui.ctx(), "confirm-delete", lines, 3);
                 let o = o + vec2(0.0, extra);
                 let files = if n == 1 {
@@ -3672,7 +3681,7 @@ it from Mister Download Manager list of downloads?",
                         o.y + 88.0,
                         &text,
                         winui::ERROR(),
-                        o.x + 362.0,
+                        right,
                         13.0,
                     );
                     lines as f32 * 13.0 + 6.0
@@ -3681,25 +3690,27 @@ it from Mister Download Manager list of downloads?",
                 };
                 grow_px(ui.ctx(), "confirm-delete-finished", warn);
                 let o = o + vec2(0.0, warn);
-                let yes = winui::button_light(
-                    ui,
-                    r(o, 94.0, 86.0, 73.0, 21.0),
-                    "Yes",
-                    ButtonKind::Default,
-                    false,
-                )
-                .clicked();
-                let no = winui::button_light(
-                    ui,
-                    r(o, 207.0, 86.0, 73.0, 21.0),
-                    "No",
-                    ButtonKind::Normal,
-                    false,
-                )
-                .clicked();
+                // Where Yes and No are, and the "Don't show" box's top.
+                let (yes_at, no_at, dont_y) = if phone {
+                    let half = (wide - 24.0 - 8.0) / 2.0;
+                    (
+                        r(o, 12.0, 122.0, half, 44.0),
+                        r(o, 12.0 + half + 8.0, 122.0, half, 44.0),
+                        88.0,
+                    )
+                } else {
+                    (
+                        r(o, 94.0, 86.0, 73.0, 21.0),
+                        r(o, 207.0, 86.0, 73.0, 21.0),
+                        120.0,
+                    )
+                };
+                let yes =
+                    winui::button_light(ui, yes_at, "Yes", ButtonKind::Default, false).clicked();
+                let no = winui::button_light(ui, no_at, "No", ButtonKind::Normal, false).clicked();
                 winui::checkbox_light(
                     ui,
-                    o + vec2(24.0, 120.0),
+                    o + vec2(24.0, dont_y),
                     &mut self.dont_show,
                     "Don't show this dialog again",
                     true,
