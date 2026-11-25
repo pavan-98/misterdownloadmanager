@@ -606,11 +606,19 @@ fn app() -> eframe::Result {
         .filter(|_| scale::test_zoom().is_none() && !offscreen())
         .filter(|[x, y, w, h]| *w >= 600 && *h >= 300 && on_a_screen(x + 40, y + 10));
     let size = saved.map_or([930.0 * z, 470.0 * z], |[_, _, w, h]| [w as f32, h as f32]);
+    // MDM_PHONE=1 (phone.rs): a phone's screen (a Pixel's 412 × 892 points), to look at the
+    // phone's layout on a desktop.
+    let phone = std::env::var_os("MDM_PHONE").is_some();
+    let (size, min) = if phone {
+        ([412.0 * z, 892.0 * z], [320.0 * z, 480.0 * z])
+    } else {
+        (size, [600.0 * z, 300.0 * z])
+    };
     let mut viewport = quiet(
         window_builder()
             .with_title(MAIN_TITLE)
             .with_inner_size(size)
-            .with_min_inner_size([600.0 * z, 300.0 * z])
+            .with_min_inner_size(min)
             .with_maximized(loaded.settings.window_maximized && !offscreen())
             .with_icon(app_icon()),
     );

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Not for the pull request (android-try.yml): installs the debug APK on the running emulator,
-# starts it, and keeps screenshots and the log in try-out/.
+# Not for the pull request (android-try.yml): installs the debug APK on the running emulator
+# (a Pixel 6: 1080 × 2400 px at 2.625 px per dp), starts it, walks through the phone layout, and
+# keeps screenshots and the log in try-out/.
 set -u
 out=try-out
 mkdir -p "$out"
@@ -11,18 +12,32 @@ adb shell wm density >> "$out/screen.txt"
 adb logcat -c
 adb shell am start -W -n "$pkg/com.misterdownloadmanager.android.MainActivity"
 shot() { sleep 3; adb exec-out screencap -p > "$out/$1.png"; }
+dp() { echo $(( $1 * 2625 / 1000 )); }
+# Under the status bar (24 dp), the top bar is 56 dp; the bottom bar sits above the navigation
+# bar (48 dp) at the screen's bottom.
+top=$(( $(dp 24) + $(dp 28) ))
+bottom=$(( 2400 - $(dp 48) - $(dp 28) ))
 sleep 25
 shot 01-start
-# Back: the language window closes (Back is Esc), the main window shows.
+# Back: the language window closes (Back is Esc).
 adb shell input keyevent KEYCODE_BACK
-shot 02-back
-# A tap on the toolbar's first button (Add URL), at the top left under the status bar.
-adb shell input tap 80 260
-shot 03-add-url
+shot 02-main
+# The drawer (the top bar's first button), then Back closes it.
+adb shell input tap $(dp 28) $top
+shot 03-drawer
+adb shell input keyevent KEYCODE_BACK
+shot 04-drawer-closed
+# The "more" menu (the top bar's last button), then Back.
+adb shell input tap $(( 1080 - $(dp 28) )) $top
+shot 05-more
+adb shell input keyevent KEYCODE_BACK
+# Add URL (the bottom bar's first of four buttons), an address typed in it.
+adb shell input tap 135 $bottom
+shot 06-add-url
 adb shell input text "https://example.com/file.zip"
-shot 04-typed
+shot 07-typed
 adb shell input keyevent KEYCODE_BACK
-shot 05-back-again
+shot 08-closed
 adb shell pidof "$pkg" > "$out/pid.txt" || echo "not running" > "$out/pid.txt"
 adb logcat -d > "$out/logcat.txt"
 adb shell run-as "$pkg" cat files/mdm/logs/mdm.log > "$out/mdm.log" 2>/dev/null || true

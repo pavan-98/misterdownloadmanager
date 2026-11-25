@@ -1218,7 +1218,13 @@ enum Popup {
     DropTarget,
     /// Categories right-click: the node's view (None: the "Queues" root).
     Node(Option<View>),
+    /// The phone layout's "more" button: the commands its bars don't show (phone.rs).
+    PhoneMore,
 }
+
+// The main window in a phone's layout (Android).
+#[path = "phone.rs"]
+mod phone;
 
 /// Hidden to the tray, the window's memory is given back 2 s after it hid (its last frames done),
 /// again 2 minutes after it hid (the clock's ticks page some back in, about 5 MB in the first
@@ -10642,6 +10648,7 @@ impl App {
                 None,
             ),
             Popup::Node(node) => (self.node_entries(node), None),
+            Popup::PhoneMore => (self.phone_more_entries(), None),
             Popup::DropTarget => (
                 vec![
                     MenuEntry::Item("Show Mister Download Manager", Cmd::ShowMain, true, false),
@@ -10652,6 +10659,43 @@ impl App {
                 None,
             ),
         }
+    }
+
+    /// The phone layout's "more" menu: the menu bar's commands its bars leave out, in the menus'
+    /// own words.
+    fn phone_more_entries(&self) -> Vec<MenuEntry<Cmd>> {
+        use MenuEntry::{Item as I, Sep, Sub};
+        let can_stop_all = self.can_stop_all();
+        vec![
+            I("Open &torrent file...", Cmd::OpenTorrentFile, true, false),
+            I("Add &magnet link...", Cmd::AddMagnet, true, false),
+            I("Add &batch download", Cmd::Batch, true, false),
+            I(
+                "Download &video from a page...",
+                Cmd::VideoPage,
+                true,
+                false,
+            ),
+            I("&Link grabber...", Cmd::LinkGrabber, true, false),
+            Sep,
+            I("&Stop All", Cmd::StopAll, can_stop_all, false),
+            I(
+                "&Delete All Completed",
+                Cmd::DeleteCompleted,
+                self.items.iter().any(|i| i.status == Status::Complete),
+                false,
+            ),
+            Sep,
+            Sub("Start &queue", true, self.queue_drop(true)),
+            Sub("S&top queue", true, self.queue_drop(false)),
+            I("S&cheduler", Cmd::Scheduler, true, false),
+            I("&Options", Cmd::Options, true, false),
+            I("&Language...", Cmd::ChooseLanguage, true, false),
+            Sep,
+            I("H&elp contents", Cmd::HelpPage("README.md"), true, false),
+            I("&About Mister Download Manager", Cmd::About, true, false),
+            I("&Exit", Cmd::Exit, true, false),
+        ]
     }
 
     /// Right-click on the list's blank space: what applies to the whole list (IDM greys the
@@ -11249,6 +11293,10 @@ impl App {
     }
 
     fn paint(&mut self, ui: &mut Ui) {
+        // A phone's screen: its own layout (phone.rs).
+        if phone::active(ui.ctx()) {
+            return self.paint_phone(ui);
+        }
         let ctx = ui.ctx().clone();
         let full = ui.max_rect();
         // The client area, laid out from the right in a right-to-left interface (winui).
