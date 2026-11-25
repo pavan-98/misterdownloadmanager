@@ -105,6 +105,11 @@ adb shell input tap 540 572
 shot 10d-save-to
 adb shell input keyevent KEYCODE_BACK
 shot 10e-options-again
+# Archives (the tenth section): the 7-Zip it found (the APK's).
+adb shell input tap 540 1528
+shot 10e2-archives
+adb shell input keyevent KEYCODE_BACK
+sleep 1
 adb shell input keyevent KEYCODE_BACK
 sleep 2
 # A link shared to MDM (as a browser's Share does): Download File Info opens for it; Enter starts it.
