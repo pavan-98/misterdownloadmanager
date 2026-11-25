@@ -2262,7 +2262,12 @@ impl App {
         if let Some(cols) = loaded.columns {
             list.apply(cols);
         }
-        let downloads = dirs::download_dir()
+        // Android: the phone's Download folder (android.rs); elsewhere the user's Downloads.
+        #[cfg(target_os = "android")]
+        let downloads = crate::android::downloads_dir();
+        #[cfg(not(target_os = "android"))]
+        let downloads = dirs::download_dir();
+        let downloads = downloads
             .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
             .unwrap_or_else(|| PathBuf::from("."));
         // The Categories pane as it was left, and the node shown (if it still exists).

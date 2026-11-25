@@ -131,6 +131,7 @@ pub fn run(
                     crate::Start::Shown,
                 ),
                 typed: String::new(),
+                typing: false,
             }))
         }),
     );
@@ -195,6 +196,8 @@ struct OnAndroid {
     app: crate::app::App,
     /// The soft keyboard's text as last seen ([`typed_events`]).
     typed: String,
+    /// Whether a text box had the keys at the last frame (the keyboard shown for it).
+    typing: bool,
 }
 
 /// The activity, for its soft keyboard's text (GameActivity's text input state).
@@ -262,6 +265,10 @@ impl OnAndroid {
             return;
         };
         if !ctx.egui_wants_keyboard_input() {
+            // No text box has the keys any more (its dialog closed): the keyboard goes.
+            if std::mem::take(&mut self.typing) {
+                activity.hide_soft_input(false);
+            }
             if !self.typed.is_empty() {
                 self.typed.clear();
                 activity.set_text_input_state(TextInputState {
@@ -272,6 +279,7 @@ impl OnAndroid {
             }
             return;
         }
+        self.typing = true;
         let now = activity.text_input_state().text;
         if now == self.typed {
             return;
@@ -376,6 +384,19 @@ pub fn parse_fonts_xml(xml: &str, dir: &std::path::Path) -> Vec<FontFamily> {
             })
         })
         .collect()
+}
+
+static DOWNLOADS: OnceLock<std::path::PathBuf> = OnceLock::new();
+
+/// Where downloads go unless Options says otherwise: the phone's Download folder, MDM's own
+/// folder in it (given by `crates/android` at the start).
+pub fn set_downloads_dir(dir: std::path::PathBuf) {
+    let _ = DOWNLOADS.set(dir);
+}
+
+/// [`set_downloads_dir`]'s folder (the desktop's Downloads has no counterpart here).
+pub fn downloads_dir() -> Option<std::path::PathBuf> {
+    DOWNLOADS.get().cloned()
 }
 
 /// The default browser, for the User-Agent of links added by hand: none known here.

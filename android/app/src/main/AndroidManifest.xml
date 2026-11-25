@@ -13,10 +13,15 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- The Scheduler's start time, as an alarm clock's (Settings → Alarms & reminders). -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Downloads in the phone's Download folder: Android 10 and older need this to write there. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
 
     <application
         android:allowBackup="false"
         android:enableOnBackInvokedCallback="true"
+        android:requestLegacyExternalStorage="true"
         android:extractNativeLibs="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

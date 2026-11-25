@@ -1222,7 +1222,7 @@ struct AddUrlLayout {
 impl AddUrlLayout {
     fn for_window(ctx: &egui::Context) -> Self {
         if crate::app::phone::active(ctx) {
-            return Self::phone(ctx.content_rect().width());
+            return Self::phone(crate::app::phone::sheet_width(ctx));
         }
         let o = Pos2::ZERO;
         AddUrlLayout {
@@ -1905,7 +1905,7 @@ impl FileInfo {
         let nth = self.nth;
         let own = |base: &str| nth.id(base);
         let lay = if crate::app::phone::active(ctx) {
-            FileInfoLayout::phone(ctx.content_rect().width(), dy)
+            FileInfoLayout::phone(crate::app::phone::sheet_width(ctx), dy)
         } else {
             FileInfoLayout::desktop(wide, cx, dy)
         };

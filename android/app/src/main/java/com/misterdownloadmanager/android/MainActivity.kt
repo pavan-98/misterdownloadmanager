@@ -20,11 +20,15 @@ class MainActivity : GameActivity() {
         // The keystore, alarms, locks and the downloads' service, for the app (libmdm.so).
         Platform.init(this)
         nativeHost(Platform)
-        // Android 13 and later show the downloads' notification only with this permission.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        // Android 13 and later show the downloads' notification only with this permission;
+        // Android 10 and older write to the Download folder only with storage's.
+        val wanted = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Manifest.permission.POST_NOTIFICATIONS
+            Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q -> Manifest.permission.WRITE_EXTERNAL_STORAGE
+            else -> null
+        }
+        if (wanted != null && checkSelfPermission(wanted) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(wanted), 1)
         }
         // The interface draws inside the status and navigation bars, the display's cutout and the
         // keyboard, not under them: the content is padded by them, and the surface MDM draws on

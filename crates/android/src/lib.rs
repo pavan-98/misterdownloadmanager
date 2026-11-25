@@ -32,6 +32,10 @@ fn android_main(app: AndroidApp) {
     };
     // The list, settings and logs: the app's private files.
     mdm_ipc::set_data_dir(folders.data.clone());
+    // Downloads: the phone's Download folder, MDM's own folder in it.
+    if let Some(public) = &folders.downloads {
+        mdm_app::android::set_downloads_dir(public.join("MisterDownloadManager"));
+    }
     // yt-dlp's Python, ffmpeg, QuickJS and 7-Zip from the APK, unpacked on a thread of their own.
     mdm_tools::android::init(&folders.native_lib, &folders.data, &folders.cache);
     if let Err(e) = mdm_app::android::run(app) {
@@ -47,6 +51,8 @@ struct Folders {
     cache: PathBuf,
     /// `getApplicationInfo().nativeLibraryDir`: the programs the APK carries.
     native_lib: PathBuf,
+    /// The phone's Download folder (`Environment.getExternalStoragePublicDirectory`).
+    downloads: Option<PathBuf>,
 }
 
 /// The activity's folders, and HTTPS given Android's own certificate checks (and the user's
@@ -63,6 +69,7 @@ fn folders(app: &AndroidApp) -> Result<Folders, String> {
         let activity = unsafe { JObject::from_raw(env, app.activity_as_ptr().cast()) };
         let native_lib = native_library_dir(env, &activity)?;
         let cache = cache_dir(env, &activity)?;
+        let downloads = public_downloads(env).ok();
         if let Err(e) = rustls_platform_verifier::android::init_with_env(env, activity) {
             return Ok(Err(format!("certificate checks: {e}")));
         }
@@ -70,6 +77,7 @@ fn folders(app: &AndroidApp) -> Result<Folders, String> {
             data,
             cache,
             native_lib,
+            downloads,
         }))
     })
     .map_err(|e| e.to_string())?
@@ -94,6 +102,29 @@ fn native_library_dir(env: &mut Env, context: &JObject) -> jni::errors::Result<P
         .l()?;
     let dir = env.cast_local::<JString>(dir)?;
     Ok(PathBuf::from(dir.try_to_string(env)?))
+}
+
+/// `Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)`.
+fn public_downloads(env: &mut Env) -> jni::errors::Result<PathBuf> {
+    let kind = env.new_string("Download")?;
+    let dir = env
+        .call_static_method(
+            jni_str!("android/os/Environment"),
+            jni_str!("getExternalStoragePublicDirectory"),
+            jni_sig!("(Ljava/lang/String;)Ljava/io/File;"),
+            &[JValue::Object(&kind)],
+        )?
+        .l()?;
+    let path = env
+        .call_method(
+            &dir,
+            jni_str!("getAbsolutePath"),
+            jni_sig!("()Ljava/lang/String;"),
+            &[],
+        )?
+        .l()?;
+    let path = env.cast_local::<JString>(path)?;
+    Ok(PathBuf::from(path.try_to_string(env)?))
 }
 
 /// `context.getCacheDir().getAbsolutePath()`.

@@ -43,15 +43,22 @@ shot 05b-more-closed
 # Add URL (the bottom bar's first of four buttons), an address typed in it.
 adb shell input tap 135 $bottom
 shot 06-add-url
-adb shell input text "https://proof.ovh.net/files/1Mb.dat"
+adb shell input text "https://proof.ovh.net/files/100Mb.dat"
 shot 07-typed
 # Enter: OK (Add URL's default button), then Download File Info's Start Download.
 adb shell input keyevent KEYCODE_ENTER
 sleep 6
 shot 08-file-info
 adb shell input keyevent KEYCODE_ENTER
-sleep 15
-shot 09-downloaded
+sleep 4
+shot 09-downloading
+# The background notification, in the shade.
+adb shell cmd statusbar expand-notifications
+shot 09b-notification
+adb shell cmd statusbar collapse
+sleep 20
+shot 09c-later
+adb shell ls -la /sdcard/Download/MisterDownloadManager > "$out/downloads.txt" 2>&1 || true
 adb shell input keyevent KEYCODE_BACK
 shot 10-closed
 # The activity destroyed as the system may destroy it ("Don't keep activities"), then opened

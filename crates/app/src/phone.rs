@@ -20,6 +20,12 @@ const PAD: f32 = 16.0;
 /// The title bar egui draws over a window embedded in the phone's one window (a dialog's sheet).
 pub const SHEET_TITLE_H: f32 = 24.0;
 
+/// The width a sheet's contents can use: the window's, less the frame egui draws around a
+/// window embedded in it.
+pub fn sheet_width(ctx: &egui::Context) -> f32 {
+    ctx.content_rect().width() - 16.0
+}
+
 /// Whether the main window takes the phone's layout now.
 pub fn active(ctx: &egui::Context) -> bool {
     (cfg!(target_os = "android") && ctx.content_rect().width() < PHONE_WIDTH)
