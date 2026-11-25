@@ -72,6 +72,14 @@ for _ in $(seq 90); do
   sleep 2
 done
 shot 09d-done
+# Open with...: the row's menu (a long press on it), its second entry, which hands the file to
+# Android's chooser of apps. Back returns to MDM.
+adb shell input swipe 540 305 540 305 900
+shot 09e-row-menu
+adb shell input tap 540 605
+shot 09f-open-with
+adb shell input keyevent KEYCODE_BACK
+sleep 2
 adb shell ls -la "$dir" > "$out/downloads.txt" 2>&1 || true
 adb shell cat "$dir/*.mdm.json" >> "$out/downloads.txt" 2>&1 || true
 {

@@ -31,6 +31,19 @@ pub trait Host: Send + Sync + 'static {
     /// Send the app's activity to the background, as Home does (Back on the main screen); the
     /// downloads go on. False when there's no activity to send.
     fn to_back(&self) -> bool;
+    /// Hand `target` to the app Android picks for it: `kind` is `url` (a web page), `view` (a
+    /// file, opened by the app set for its type), `chooser` (a file, the system's choice of apps:
+    /// Open with) or `folder` (the system's Downloads, as Android has no folder view to give).
+    fn open(&self, kind: &str, target: &str) -> Result<(), String>;
+}
+
+/// [`Host::open`]: a page, a file or a folder handed to Android's apps (`launch::open`, Open and
+/// Open with, Open folder).
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn open_with_system(kind: &str, target: &str) -> Result<(), String> {
+    host()
+        .ok_or_else(|| "no Android host".to_owned())?
+        .open(kind, target)
 }
 
 /// Back on the main screen: the app goes to the background ([`Host::to_back`]).
@@ -531,6 +544,7 @@ mod tests {
         keys: Mutex<BTreeMap<(String, String), String>>,
         alarm: Mutex<Option<i64>>,
         awake: Mutex<Option<String>>,
+        opened: Mutex<Vec<String>>,
     }
 
     impl Host for Fake {
@@ -571,6 +585,10 @@ mod tests {
         fn to_back(&self) -> bool {
             true
         }
+        fn open(&self, kind: &str, target: &str) -> Result<(), String> {
+            self.opened.lock().unwrap().push(format!("{kind} {target}"));
+            Ok(())
+        }
     }
 
     /// One test for the whole module: the host is given once per process.
@@ -581,6 +599,7 @@ mod tests {
         assert_eq!(wake_support(), crate::wake::Support::NoAlarm);
         assert!(!keep_awake(Some("downloads")));
         assert!(!to_back(), "no activity to send back yet");
+        assert!(open_with_system("view", "/sdcard/Download/a.bin").is_err());
 
         let fake = Arc::new(Fake::default());
         assert!(set_host(fake.clone()));
@@ -609,6 +628,11 @@ mod tests {
         assert!(keep_awake(None));
         assert_eq!(*fake.awake.lock().unwrap(), None);
         assert!(to_back());
+        open_with_system("chooser", "/sdcard/Download/a.bin").unwrap();
+        assert_eq!(
+            *fake.opened.lock().unwrap(),
+            ["chooser /sdcard/Download/a.bin"]
+        );
 
         assert!(default_browser().is_none());
     }

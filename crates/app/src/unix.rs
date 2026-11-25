@@ -1174,6 +1174,15 @@ const SHOW_ITEMS_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
 /// at the limit by crate::launch (zbus's blocking calls have no time limit of their own, and a
 /// connection to the session bus would be made for this one call).
 pub fn show_in_folder(path: &Path) {
+    // Android has no folder view to give a file to: its Downloads, where MDM's folder is.
+    #[cfg(target_os = "android")]
+    {
+        if let Err(e) = crate::android::open_with_system("folder", &path.to_string_lossy()) {
+            tracing::warn!("show in folder: {e}");
+        }
+        return;
+    }
+    #[cfg_attr(target_os = "android", allow(unreachable_code))]
     let dir = path.parent().map(Path::to_path_buf);
     if !path.exists() {
         if let Some(dir) = dir.filter(|d| d.is_dir()) {

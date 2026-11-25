@@ -267,6 +267,11 @@ impl mdm_app::android::Host for JavaHost {
     fn to_back(&self) -> bool {
         self.call("toBack", [None; 4]).is_ok()
     }
+
+    fn open(&self, kind: &str, target: &str) -> Result<(), String> {
+        self.call("open", [Some(kind), Some(target), None, None])
+            .map(|_| ())
+    }
 }
 
 /// `MainActivity.nativeEditorAction()`: the soft keyboard's action key (Done, Go), which the

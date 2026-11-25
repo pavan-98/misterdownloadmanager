@@ -3,9 +3,12 @@ package com.misterdownloadmanager.android
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlarmManager
+import android.app.DownloadManager
 import android.app.PendingIntent
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
@@ -13,6 +16,9 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
+import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
+import java.io.File
 import java.lang.ref.WeakReference
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -53,6 +59,10 @@ object Platform {
                 "ok:"
             } else {
                 "err:the locks were refused"
+            }
+            "open" -> {
+                Opener.open(activity.get() ?: app, a.orEmpty(), b.orEmpty())
+                "ok:"
             }
             "toBack" -> activity.get()?.let {
                 it.runOnUiThread { it.moveTaskToBack(true) }
@@ -197,3 +207,37 @@ object Locks {
         return true
     }
 }
+
+/**
+ * A page, a file or a folder handed to the app Android picks for it (`Platform.call("open")`):
+ * `url` a web page, `view` a file by the app set for its type, `chooser` a file with the
+ * system's choice of apps (Open with), `folder` the system's Downloads (Android has no folder
+ * view to give a file to). Files go as content: addresses (the manifest's FileProvider).
+ */
+object Opener {
+    fun open(context: Context, kind: String, target: String) {
+        val intent = when (kind) {
+            "url" -> Intent(Intent.ACTION_VIEW, Uri.parse(target))
+            "folder" -> Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)
+            "view", "chooser" -> {
+                val file = File(target)
+                val uri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
+                val type = MimeTypeMap.getSingleton()
+                    .getMimeTypeFromExtension(file.extension.lowercase())
+                    ?: "application/octet-stream"
+                val view = Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, type)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                if (kind == "chooser") Intent.createChooser(view, null) else view
+            }
+            else -> throw IllegalArgumentException("unknown kind $kind")
+        }
+        if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            throw IllegalStateException("no app on this phone opens it")
+        }
+    }
+}
+

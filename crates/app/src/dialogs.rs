@@ -4343,9 +4343,15 @@ fn open_file_platform(path: &Path) -> Result<(), std::io::Error> {
     // Linux and macOS: no folder to give. Their file managers start a file's program in no
     // folder of the file's either (macOS's LaunchServices starts every app in `/`; a Linux
     // desktop's in the launcher's own), and programs there don't write beside themselves.
-    #[cfg(not(windows))]
+    #[cfg(all(not(windows), not(target_os = "android")))]
     {
         open::that_detached(path)
+    }
+    // Android: the app set for the file's type, through an intent (the Android app's Platform).
+    #[cfg(target_os = "android")]
+    {
+        crate::android::open_with_system("view", &path.to_string_lossy())
+            .map_err(std::io::Error::other)
     }
 }
 
@@ -4494,9 +4500,14 @@ pub fn open_download_with(path: &Path, moved_away: bool) {
             // Linux and macOS have no chooser MDM can call for a file: the desktop's opener
             // (xdg-open, which goes through the desktop portal in a sandbox, or macOS's `open`)
             // opens it with the program set for its type, which the user changes there.
-            #[cfg(not(windows))]
+            #[cfg(all(not(windows), not(target_os = "android")))]
             {
                 open::that_detached(p).map_err(|e| e.to_string())
+            }
+            // Android's own chooser of apps for the file.
+            #[cfg(target_os = "android")]
+            {
+                crate::android::open_with_system("chooser", &p.to_string_lossy())
             }
         });
     });
