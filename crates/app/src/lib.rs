@@ -210,10 +210,10 @@ fn system_clipboard_text() -> clipboard::Read {
 }
 
 /// Android: arboard has no clipboard there; only the app in front may read it, through Java
-/// (the Android app's part).
+/// (the Android app's part, android.rs `Host::clipboard`).
 #[cfg(target_os = "android")]
 fn system_clipboard_text() -> clipboard::Read {
-    clipboard::Read::NoText
+    android::clipboard_read()
 }
 
 /// A number that changes whenever the clipboard does, so the watch for copied links
@@ -230,9 +230,13 @@ pub fn clipboard_changes() -> Option<u64> {
     }
     #[cfg(windows)]
     return Some(u64::from(win32::clipboard_sequence()));
+    // Android: one its clipboard's listener counts (each read there shows the person a notice,
+    // so the watch must not read once a second).
+    #[cfg(target_os = "android")]
+    return android::clipboard_changes();
     // Linux and macOS: no such number without the clipboard's own protocol (X11's XFixes,
     // macOS's changeCount): the watch reads the text each time, off the window's thread.
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "android")))]
     None
 }
 
@@ -268,6 +272,13 @@ fn read_clipboard(off: bool, read: impl FnOnce() -> clipboard::Read) -> clipboar
 /// Put `text` on the clipboard (egui hands it to the system after the frame). An off-screen
 /// run leaves the clipboard alone and logs what it would have copied, for a check to read.
 pub fn copy_text(ctx: &egui::Context, text: String) {
+    // Android: egui's copy goes nowhere there; the Android app's clipboard takes it.
+    #[cfg(target_os = "android")]
+    {
+        let _ = ctx;
+        let _ = set_clipboard(&text);
+    }
+    #[cfg(not(target_os = "android"))]
     if let Some(text) = write_clipboard(offscreen(), text) {
         ctx.copy_text(text);
     }
@@ -285,7 +296,7 @@ pub fn set_clipboard(text: &str) -> bool {
         }),
         // Android: arboard has no clipboard there (the Android app's part, through Java).
         #[cfg(target_os = "android")]
-        Some(_) => false,
+        Some(text) => android::clipboard_write(&text),
         None => true,
     }
 }

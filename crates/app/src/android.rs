@@ -38,6 +38,40 @@ pub trait Host: Send + Sync + 'static {
     /// The downloads' notification (while the downloads keep the phone awake): `line` says how
     /// they go ("2 downloading, 1.25 MB/sec"), and `stop` is its Stop All button's label.
     fn status(&self, line: &str, stop: &str);
+    /// The clipboard (Android's, only while the app is in front): `op` is `get` (its text, None
+    /// when it holds none), `set` (`text` on it) or `changes` (a number that changes whenever a
+    /// new clip is copied, so the watch for copied links reads it only then).
+    fn clipboard(&self, op: &str, text: Option<&str>) -> Result<Option<String>, String>;
+}
+
+/// The clipboard's text ([`Host::clipboard`]), as lib.rs `clipboard_text` reads it elsewhere.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn clipboard_read() -> crate::clipboard::Read {
+    match host().map(|h| h.clipboard("get", None)) {
+        Some(Ok(Some(text))) => crate::clipboard::Read::Text(text),
+        Some(Ok(None)) => crate::clipboard::Read::NoText,
+        Some(Err(e)) => {
+            tracing::debug!("clipboard: not read now ({e})");
+            crate::clipboard::Read::Failed
+        }
+        None => crate::clipboard::Read::NoText,
+    }
+}
+
+/// `text` on the clipboard; whether it took it.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn clipboard_write(text: &str) -> bool {
+    host().is_some_and(|h| h.clipboard("set", Some(text)).is_ok())
+}
+
+/// A number that changes with each new clip ([`Host::clipboard`]'s `changes`), for the watch.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn clipboard_changes() -> Option<u64> {
+    host()?
+        .clipboard("changes", None)
+        .ok()
+        .flatten()
+        .and_then(|n| n.parse().ok())
 }
 
 /// [`Host::open`]: a page, a file or a folder handed to Android's apps (`launch::open`, Open and
@@ -682,6 +716,7 @@ mod tests {
         alarm: Mutex<Option<i64>>,
         awake: Mutex<Option<String>>,
         opened: Mutex<Vec<String>>,
+        clip: Mutex<(Option<String>, u64)>,
     }
 
     impl Host for Fake {
@@ -721,6 +756,19 @@ mod tests {
         }
         fn to_back(&self) -> bool {
             true
+        }
+        fn clipboard(&self, op: &str, text: Option<&str>) -> Result<Option<String>, String> {
+            let mut clip = self.clip.lock().unwrap();
+            match op {
+                "get" => Ok(clip.0.clone()),
+                "set" => {
+                    clip.0 = text.map(str::to_owned);
+                    clip.1 += 1;
+                    Ok(None)
+                }
+                "changes" => Ok(Some(clip.1.to_string())),
+                _ => Err(format!("unknown op {op}")),
+            }
         }
         fn status(&self, line: &str, stop: &str) {
             self.opened
@@ -771,6 +819,14 @@ mod tests {
         assert!(keep_awake(None));
         assert_eq!(*fake.awake.lock().unwrap(), None);
         assert!(to_back());
+        assert_eq!(clipboard_read(), crate::clipboard::Read::NoText);
+        let before = clipboard_changes();
+        assert!(clipboard_write("https://example.com/a.zip"));
+        assert_ne!(clipboard_changes(), before);
+        assert_eq!(
+            clipboard_read(),
+            crate::clipboard::Read::Text("https://example.com/a.zip".into())
+        );
         open_with_system("chooser", "/sdcard/Download/a.bin").unwrap();
         assert_eq!(
             *fake.opened.lock().unwrap(),

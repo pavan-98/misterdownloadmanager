@@ -6,6 +6,8 @@ import android.app.AlarmManager
 import android.app.DownloadManager
 import android.app.PendingIntent
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -21,6 +23,7 @@ import androidx.core.content.FileProvider
 import java.io.File
 import java.lang.ref.WeakReference
 import java.security.KeyStore
+import java.util.concurrent.atomic.AtomicLong
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -40,10 +43,36 @@ object Platform {
     /** The activity on screen, for what needs one (Back sending the app to the background). */
     private var activity = WeakReference<Activity>(null)
 
+    /** How many clips were copied since the start: the watch for copied links reads only on a change. */
+    private val clips = AtomicLong()
+
+    private var listening = false
+
     fun init(activity: Activity) {
         app = activity.applicationContext
         this.activity = WeakReference(activity)
         DownloadService.channels(app)
+        if (!listening) {
+            app.getSystemService(ClipboardManager::class.java)
+                ?.addPrimaryClipChangedListener { clips.incrementAndGet() }
+            listening = true
+        }
+    }
+
+    /** The clipboard: `get` its text (Android lets only the app in front read it), `set` it, or `changes`. */
+    private fun clipboard(op: String, text: String?): String {
+        val board = app.getSystemService(ClipboardManager::class.java) ?: return "err:no clipboard"
+        return when (op) {
+            "get" -> board.primaryClip?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)?.coerceToText(app)?.toString()
+                ?.let { "ok:$it" } ?: "none"
+            "set" -> {
+                board.setPrimaryClip(ClipData.newPlainText(app.getString(R.string.app_name), text.orEmpty()))
+                "ok:"
+            }
+            "changes" -> "ok:${clips.get()}"
+            else -> "err:unknown clipboard op $op"
+        }
     }
 
     // An instance method (the object's): libmdm.so calls it on the object it was given.
@@ -60,6 +89,7 @@ object Platform {
             } else {
                 "err:the locks were refused"
             }
+            "clipboard" -> clipboard(a.orEmpty(), b)
             "status" -> {
                 DownloadService.status(app, a.orEmpty(), b.orEmpty())
                 "ok:"

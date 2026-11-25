@@ -268,6 +268,10 @@ impl mdm_app::android::Host for JavaHost {
         self.call("toBack", [None; 4]).is_ok()
     }
 
+    fn clipboard(&self, op: &str, text: Option<&str>) -> Result<Option<String>, String> {
+        self.call("clipboard", [Some(op), text, None, None])
+    }
+
     fn status(&self, line: &str, stop: &str) {
         if let Err(e) = self.call("status", [Some(line), Some(stop), None, None]) {
             log::warn!("the downloads' notification: {e}");
