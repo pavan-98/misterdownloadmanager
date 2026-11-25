@@ -685,7 +685,12 @@ pub fn cues_shown(ctx: &egui::Context) -> bool {
 }
 
 /// Whether access letters are underlined: always in dark mode, after [`show_cues`] in light.
+/// Never on a phone (phone.rs), which has no Alt key to press them with, unless a keyboard's Alt
+/// turned them on.
 pub fn cues(ctx: &egui::Context) -> bool {
+    if crate::app::phone::active(ctx) {
+        return cues_shown(ctx);
+    }
     crate::theme::colors().access_keys_always || cues_shown(ctx)
 }
 
