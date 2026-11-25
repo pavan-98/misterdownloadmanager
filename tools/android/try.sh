@@ -39,6 +39,7 @@ shot 04-drawer-closed
 adb shell input tap $(( 1080 - $(dp 28) )) $top
 shot 05-more
 adb shell input keyevent KEYCODE_BACK
+shot 05b-more-closed
 # Add URL (the bottom bar's first of four buttons), an address typed in it.
 adb shell input tap 135 $bottom
 shot 06-add-url

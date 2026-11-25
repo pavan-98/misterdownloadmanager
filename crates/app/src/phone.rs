@@ -205,7 +205,11 @@ impl App {
     /// and closes the drawer, as a tap outside it or Back does. Returns the view chosen.
     fn drawer(&mut self, ui: &mut Ui, full: egui::Rect) -> Option<View> {
         let ctx = ui.ctx().clone();
-        let close = || ctx.data_mut(|d| d.insert_temp(drawer_id(), false));
+        // Closed, a frame without it at once (as the menu sheet's, [`menu_sheet`]).
+        let close = || {
+            ctx.data_mut(|d| d.insert_temp(drawer_id(), false));
+            ctx.request_repaint();
+        };
         let width = (full.width() - BAR_H).min(320.0);
         let pane = egui::Rect::from_min_size(full.min, egui::vec2(width, full.height()));
         // The rest of the window, dimmed: a tap there closes the drawer.
@@ -631,6 +635,9 @@ fn menu_sheet<C: Clone>(
         ctx.data_mut(|d| d.insert_temp(path_id, path));
     } else {
         ctx.data_mut(|d| d.remove::<Vec<usize>>(path_id));
+        // A frame without the sheet now: a touch is matched to the last frame's widgets, and
+        // the sheet's backdrop would take the next one.
+        ctx.request_repaint();
     }
     result
 }
