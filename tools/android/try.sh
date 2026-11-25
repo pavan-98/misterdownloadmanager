@@ -77,7 +77,7 @@ shot 09d-done
 # Android's chooser of apps. Back returns to MDM.
 adb shell input swipe 540 305 540 305 2000
 shot 09e-row-menu
-adb shell input tap 540 605
+adb shell input tap 540 678
 shot 09f-open-with
 adb shell input keyevent KEYCODE_BACK
 sleep 2
