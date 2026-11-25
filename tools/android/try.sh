@@ -11,6 +11,8 @@ until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep
 sleep 30
 adb shell input keyevent KEYCODE_HOME
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+# The install's broadcasts settle first (one arriving after the start restarts the activity).
+sleep 20
 adb shell wm size > "$out/screen.txt"
 adb shell wm density >> "$out/screen.txt"
 adb logcat -c

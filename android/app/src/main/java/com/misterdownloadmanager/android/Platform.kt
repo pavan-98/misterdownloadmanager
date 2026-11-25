@@ -34,7 +34,7 @@ object Platform {
         DownloadService.channels(app)
     }
 
-    @JvmStatic
+    // An instance method (the object's): libmdm.so calls it on the object it was given.
     fun call(what: String, a: String?, b: String?, c: String?, d: String?): String? = try {
         when (what) {
             "keychain" -> keychain(a.orEmpty(), b.orEmpty(), c.orEmpty(), d)
