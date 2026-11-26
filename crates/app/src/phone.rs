@@ -207,35 +207,76 @@ impl App {
         // The list.
         let (ids, rows) = self.list_rows();
         self.selection.retain(&ids);
+        // Selection mode (a long press starts it), as Android's lists have it; out of it nothing
+        // stays picked: a tap opens, and the commands act on what they name.
+        let mut picking = ctx
+            .data(|d| d.get_temp::<bool>(picking_id()))
+            .unwrap_or(false);
+        if picking && self.selection.ids().is_empty() {
+            picking = false;
+        }
+        if !picking && !self.selection.ids().is_empty() && self.popup.is_none() {
+            self.selection.apply(crate::selection::Pick::Clear, &ids);
+        }
         let (selected, _) = self.selection.rows(&ids);
         if self.list_view != self.view {
             self.list.scroll = 0.0;
             self.list_view = self.view;
         }
+        // Each row's own button: Pause while it runs, Resume when it can go on.
+        let states: Vec<RowState> = ids
+            .iter()
+            .map(|id| match self.items.iter().find(|i| i.id == *id) {
+                Some(i) if i.live.is_some() => RowState::Running,
+                Some(i) if i.can_start() => RowState::Stopped,
+                _ => RowState::Done,
+            })
+            .collect();
         let mut list = ui.new_child(egui::UiBuilder::new().max_rect(body));
-        let picked = phone_list(&mut list, &rows, &selected, &mut self.icons);
+        let picked = phone_list(
+            &mut list,
+            &rows,
+            &selected,
+            picking,
+            &states,
+            &mut self.icons,
+        );
         if let Some((i, held)) = picked.tapped {
-            // A tap picks the row alone; while several are picked (Select all, a long press's
-            // menu), it adds or takes away this one.
-            let picking = selected.iter().filter(|s| **s).count() > 1;
-            let pick = if picking && !held {
-                crate::selection::Pick::Toggle(i)
+            if picking {
+                // A tap (or a long press) adds the row or takes it away.
+                self.selection
+                    .apply(crate::selection::Pick::Toggle(i), &ids);
+            } else if held {
+                // A long press picks the row and starts selection mode.
+                self.selection.apply(crate::selection::Pick::Only(i), &ids);
+                picking = true;
             } else {
-                crate::selection::Pick::Only(i)
-            };
-            self.selection.apply(pick, &ids);
-            // A tap opens it, as Android's lists do: a download that isn't done shows its
-            // details (its progress page), a finished one opens its file. Not while several
-            // are picked: a tap adds or takes one away then.
-            if !picking && !held {
+                // A tap opens it, as Android's lists do: a download that isn't done shows its
+                // details (its progress page), a finished one opens its file.
                 self.open_item(ids[i]);
             }
         }
         if let Some((i, at)) = picked.menu {
+            // A right-click (the desktop's preview): its menu, as on the desktop.
             if !selected.get(i).copied().unwrap_or(false) {
                 self.selection.apply(crate::selection::Pick::Only(i), &ids);
             }
             self.open_popup_asked(Popup::Item(Some(ids[i])), at, &ctx);
+        }
+        if let Some((i, pause)) = picked.action {
+            chosen = Some((if pause { Cmd::Stop } else { Cmd::Resume }, Some(ids[i])));
+        }
+        // Back ends selection mode (a menu or the drawer over it closes first).
+        let overlay = self.popup.is_some()
+            || ctx
+                .data(|d| d.get_temp::<bool>(drawer_id()))
+                .unwrap_or(false);
+        if picking
+            && !overlay
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            picking = false;
+            self.selection.apply(crate::selection::Pick::Clear, &ids);
         }
         if ids.is_empty()
             && let Some(cmd) = self.empty_state(ui, winui::rect(body))
@@ -255,11 +296,27 @@ impl App {
         let menu_at = egui::Rect::from_min_size(top.min, egui::vec2(side, side));
         let more_at =
             egui::Rect::from_min_size(pos2(top.max.x - side, top.min.y), egui::vec2(side, side));
-        if bar_button(ui, menu_at, "phone-categories", Glyph::Menu) {
-            ctx.data_mut(|d| d.insert_temp(drawer_id(), true));
+        let all_at = more_at.translate(egui::vec2(-side, 0.0));
+        let picked_n = self.selection.ids().len() as u64;
+        let (lead, title) = if picking {
+            (
+                Glyph::Close,
+                crate::i18n::tn(picked_n, "{n} selected", "{n} selected"),
+            )
+        } else {
+            (Glyph::Menu, self.view_title())
+        };
+        if bar_button(ui, menu_at, ("phone-lead", picking), lead) {
+            if picking {
+                picking = false;
+                self.selection.apply(crate::selection::Pick::Clear, &ids);
+            } else {
+                ctx.data_mut(|d| d.insert_temp(drawer_id(), true));
+            }
         }
-        let title = self.view_title();
         let tx = menu_at.max.x + 4.0;
+        let title_room = if picking { all_at.min.x } else { more_at.min.x } - PAD - tx;
+        let title = elide(ui, &title, font_bold(18.0), title_room);
         ui.painter().text(
             winui::rect(egui::Rect::from_min_size(
                 pos2(tx, top.center().y),
@@ -275,25 +332,78 @@ impl App {
             font_bold(18.0),
             colors().text,
         );
+        if picking && bar_button(ui, all_at, "phone-select-all", Glyph::SelectAll) {
+            self.selection.apply(crate::selection::Pick::All, &ids);
+        }
         if bar_button(ui, more_at, "phone-more", Glyph::More) {
             let at = winui::rect(more_at).left_bottom();
-            self.open_popup_asked(Popup::PhoneMore, at, &ctx);
+            // In selection mode, the picked downloads' menu (Open, Move, Properties...).
+            // (A picked download's menu acts on every one picked.)
+            let popup = if picking {
+                Popup::Item(self.selection.ids().first().copied())
+            } else {
+                Popup::PhoneMore
+            };
+            self.open_popup_asked(popup, at, &ctx);
         }
+        ctx.data_mut(|d| d.insert_temp(picking_id(), picking));
 
-        // The bottom bar: the commands used most, for the downloads picked.
+        // The bottom bar: the commands used most; in selection mode, those for the downloads
+        // picked.
         let picked_items = self.chosen(None);
         let running = picked_items.iter().any(|i| i.live.is_some());
         let resumable = picked_items.iter().any(|i| i.can_start());
         let deletable = picked_items.iter().any(|i| i.live.is_none());
-        let buttons = [
-            (Icon::AddUrl, "Add URL", true, Cmd::AddUrl),
-            // i18n: verb: continue the selected downloads
-            (Icon::Resume, "Resume", resumable, Cmd::Resume),
-            // i18n: verb: stop the selected downloads
-            (Icon::Stop, "Stop", running, Cmd::Stop),
-            // i18n: verb: delete the selected downloads
-            (Icon::Delete, "Delete", deletable, Cmd::Remove),
-        ];
+        let any_running = self.items.iter().any(|i| i.live.is_some());
+        let buttons: Vec<(Icon, &str, bool, Cmd)> = if picking {
+            vec![
+                (
+                    Icon::Resume,
+                    crate::i18n::tc("toolbar", "Resume"),
+                    resumable,
+                    Cmd::Resume,
+                ),
+                (
+                    Icon::Stop,
+                    crate::i18n::tc("toolbar", "Stop"),
+                    running,
+                    Cmd::Stop,
+                ),
+                (
+                    Icon::Delete,
+                    crate::i18n::tc("toolbar", "Delete"),
+                    deletable,
+                    Cmd::Remove,
+                ),
+            ]
+        } else {
+            vec![
+                (
+                    Icon::AddUrl,
+                    crate::i18n::tc("toolbar", "Add URL"),
+                    true,
+                    Cmd::AddUrl,
+                ),
+                (
+                    Icon::HelperVideo,
+                    crate::i18n::t("Video"),
+                    true,
+                    Cmd::VideoPage,
+                ),
+                (
+                    Icon::StopAll,
+                    crate::i18n::tc("toolbar", "Stop All"),
+                    any_running,
+                    Cmd::StopAll,
+                ),
+                (
+                    Icon::Scheduler,
+                    crate::i18n::tc("toolbar", "Scheduler"),
+                    true,
+                    Cmd::Scheduler,
+                ),
+            ]
+        };
         let p = ui.painter();
         p.rect_filled(winui::rect(bottom), 0.0, colors().menubar);
         p.hline(
@@ -307,7 +417,7 @@ impl App {
                 pos2(bottom.min.x + w * k as f32, bottom.min.y),
                 egui::vec2(w, BAR_H),
             );
-            if bottom_button(ui, at, icon, crate::i18n::t(label), enabled) {
+            if bottom_button(ui, at, icon, label, enabled) {
                 chosen = Some((cmd, None));
             }
         }
@@ -339,12 +449,15 @@ impl App {
         }
     }
 
-    /// Whether the drawer or a menu sheet is over the list (Back closes it).
+    /// Whether the drawer, a menu sheet or selection mode is over the list (Back closes it).
     #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     pub(crate) fn phone_overlay(&self, ctx: &egui::Context) -> bool {
         self.popup.is_some()
             || ctx
                 .data(|d| d.get_temp::<bool>(drawer_id()))
+                .unwrap_or(false)
+            || ctx
+                .data(|d| d.get_temp::<bool>(picking_id()))
                 .unwrap_or(false)
     }
 
@@ -464,16 +577,38 @@ impl App {
 struct ListTouch {
     /// A row tapped: its index, and whether it was held (a long press).
     tapped: Option<(usize, bool)>,
-    /// A row's menu asked for (a long press, a right-click), where.
+    /// A row's menu asked for (a right-click, in the desktop's preview), where.
     menu: Option<(usize, Pos2)>,
+    /// A row's own button tapped: true for Pause, false for Resume.
+    action: Option<(usize, bool)>,
+}
+
+/// What a row's own button does ([`phone_list`]).
+#[derive(Clone, Copy, PartialEq)]
+enum RowState {
+    /// Downloading: Pause.
+    Running,
+    /// Stopped, failed or waiting: Resume.
+    Stopped,
+    /// Complete (or can't start): no button.
+    Done,
+}
+
+/// Whether the list is in selection mode (kept with the window's memory).
+fn picking_id() -> egui::Id {
+    egui::Id::unique("phone-picking")
 }
 
 /// The download list, one row per download: its icon, its name, then its progress bar and a line
-/// of what it is doing (size, speed, time left, status), in the list's own words ([`list::Row`]).
+/// of what it is doing (size, speed, time left, status), in the list's own words ([`list::Row`]),
+/// and at its end its own button (Pause, Resume; [`RowState`]). In selection mode (`picking`) a
+/// check circle takes the icon's place and the picked rows are tinted.
 fn phone_list(
     ui: &mut Ui,
     rows: &[list::Row],
     selected: &[bool],
+    picking: bool,
+    states: &[RowState],
     icons: &mut chrome::ShellIcons,
 ) -> ListTouch {
     let mut touch = ListTouch::default();
@@ -486,23 +621,22 @@ fn phone_list(
                 let row = &rows[i];
                 let (at, r) =
                     ui.allocate_exact_size(egui::vec2(width, ROW_H), egui::Sense::click());
+                let state = states.get(i).copied().unwrap_or(RowState::Done);
+                // The row's own button, at its end (not in selection mode).
+                let button = (!picking && state != RowState::Done).then(|| {
+                    egui::Rect::from_min_size(
+                        pos2(at.max.x - PAD - 40.0, at.center().y - 20.0),
+                        egui::vec2(40.0, 40.0),
+                    )
+                });
+                let picked = picking && selected.get(i).copied().unwrap_or(false);
                 let p = ui.painter();
-                let picked = selected.get(i).copied().unwrap_or(false);
                 if picked {
-                    p.rect_filled(at, 0.0, colors().selection);
+                    p.rect_filled(at, 0.0, colors().selection_inactive);
                 } else if r.is_pointer_button_down_on() {
                     p.rect_filled(at, 0.0, colors().row_pressed);
                 }
-                let ink = if picked {
-                    colors().selection_text
-                } else {
-                    colors().text
-                };
-                let muted = if picked {
-                    colors().selection_muted
-                } else {
-                    colors().muted
-                };
+                let (ink, muted) = (colors().text, colors().muted);
                 // English x, mirrored for a right-to-left interface.
                 let x = |dx: f32| winui::mx(at.min.x + dx);
                 let align = if winui::rtl() {
@@ -510,10 +644,21 @@ fn phone_list(
                 } else {
                     egui::Align2::LEFT_CENTER
                 };
-                // An English point: the painter places it (right to left, from the right).
-                icons.paint(ui, row.icon.clone(), pos2(at.min.x + PAD, at.min.y + 14.0));
+                if picking {
+                    check_circle(
+                        ui,
+                        winui::rect(egui::Rect::from_center_size(
+                            pos2(at.min.x + PAD + 8.0, at.min.y + 22.0),
+                            egui::vec2(20.0, 20.0),
+                        )),
+                        picked,
+                    );
+                } else {
+                    // An English point: the painter places it (right to left, from the right).
+                    icons.paint(ui, row.icon.clone(), pos2(at.min.x + PAD, at.min.y + 14.0));
+                }
                 let text_x = PAD + 16.0 + 12.0;
-                let text_w = width - text_x - PAD;
+                let text_w = width - text_x - PAD - if button.is_some() { 48.0 } else { 0.0 };
                 let name = elide(ui, &row.cells[0], font(16.0), text_w);
                 ui.painter().text(
                     pos2(x(text_x), at.min.y + 22.0),
@@ -522,12 +667,12 @@ fn phone_list(
                     font(16.0),
                     ink,
                 );
-                // The progress bar, when the size is known.
+                // The progress bar, when the size is known and it isn't done.
                 let bar = egui::Rect::from_min_size(
                     pos2(at.min.x + text_x, at.min.y + 38.0),
                     egui::vec2(text_w, 4.0),
                 );
-                if let Some(done) = row.progress {
+                if let Some(done) = row.progress.filter(|_| state != RowState::Done) {
                     let screen = winui::rect(bar);
                     ui.painter()
                         .rect_filled(screen, 2.0, colors().progress_track);
@@ -557,27 +702,105 @@ fn phone_list(
                     muted,
                 );
                 ui.painter().hline(
-                    at.x_range(),
+                    winui::rect(at.with_min_x(at.min.x + text_x)).x_range(),
                     at.max.y - 0.5,
                     egui::Stroke::new(1.0, colors().list_grid),
                 );
-                let held = held_long(ui, &r);
-                // The release that ends a long press is no tap: its menu is open.
+                // Its own button, over the row (a tap on it isn't one on the row).
+                let mut on_button = false;
+                if let Some(b) = button {
+                    let screen = winui::rect(b);
+                    let br = ui.interact(screen, r.id.with("own"), egui::Sense::click());
+                    on_button = br.hovered() || br.is_pointer_button_down_on();
+                    row_button(ui, screen, state == RowState::Running, &br);
+                    if br.clicked() {
+                        touch.action = Some((i, state == RowState::Running));
+                    }
+                }
+                let held = !on_button && held_long(ui, &r);
+                // The release that ends a long press is no tap: it picked the row already.
                 let after_hold = r.clicked()
                     && ui.data_mut(|d| d.remove_temp::<bool>(r.id.with("held-done")).is_some());
-                if r.secondary_clicked() || held {
+                if r.secondary_clicked() {
                     let p = r.interact_pointer_pos().unwrap_or(at.center());
                     touch.menu = Some((i, p));
+                } else if held {
                     touch.tapped = Some((i, true));
-                    if held {
-                        ui.data_mut(|d| d.insert_temp(r.id.with("held-done"), true));
-                    }
-                } else if r.clicked() && !after_hold {
+                    ui.data_mut(|d| d.insert_temp(r.id.with("held-done"), true));
+                } else if r.clicked() && !after_hold && !on_button {
                     touch.tapped = Some((i, false));
                 }
             }
         });
     touch
+}
+
+/// Selection mode's check circle at `screen`: filled with a tick when `on`, a ring when not.
+fn check_circle(ui: &Ui, screen: egui::Rect, on: bool) {
+    let p = ui.painter();
+    let c = screen.center();
+    if on {
+        p.circle_filled(c, 10.0, colors().selection);
+        let tick = [
+            c + egui::vec2(-4.5, 0.0),
+            c + egui::vec2(-1.5, 3.5),
+            c + egui::vec2(5.0, -3.5),
+        ];
+        p.line_segment(
+            [tick[0], tick[1]],
+            egui::Stroke::new(2.0, colors().selection_text),
+        );
+        p.line_segment(
+            [tick[1], tick[2]],
+            egui::Stroke::new(2.0, colors().selection_text),
+        );
+    } else {
+        p.circle_stroke(c, 9.0, egui::Stroke::new(1.5, colors().muted));
+    }
+}
+
+/// A row's own round button at `screen`: Pause (two bars) or Resume (a triangle).
+fn row_button(ui: &Ui, screen: egui::Rect, pause: bool, r: &egui::Response) {
+    let p = ui.painter();
+    let c = screen.center();
+    if r.is_pointer_button_down_on() {
+        p.circle_filled(c, 20.0, colors().toolbar_pressed);
+    }
+    p.circle_stroke(c, 15.0, egui::Stroke::new(1.5, colors().progress_bar));
+    let ink = colors().progress_bar;
+    if pause {
+        for dx in [-3.5, 3.5] {
+            p.rect_filled(
+                egui::Rect::from_center_size(c + egui::vec2(dx, 0.0), egui::vec2(3.0, 11.0)),
+                1.0,
+                ink,
+            );
+        }
+    } else {
+        // Pointing the way the text reads.
+        let d = if winui::rtl() { -1.0 } else { 1.0 };
+        p.add(egui::Shape::convex_polygon(
+            vec![
+                c + egui::vec2(-4.0 * d, -6.5),
+                c + egui::vec2(6.5 * d, 0.0),
+                c + egui::vec2(-4.0 * d, 6.5),
+            ],
+            ink,
+            egui::Stroke::NONE,
+        ));
+    }
+    winui::expose(
+        r,
+        egui::Role::Button,
+        // i18n: verb: a download's own button in the phone's list
+        if pause {
+            crate::i18n::t("Pause")
+        } else {
+            crate::i18n::t("Resume")
+        },
+        true,
+        None,
+    );
 }
 
 /// How long a row is held still before its menu opens: Android's long press.
@@ -648,6 +871,8 @@ enum Glyph {
     More,
     /// A cross: closes the page ([`sheet`]).
     Close,
+    /// A box with a tick in it: Select all (selection mode).
+    SelectAll,
 }
 
 /// A square button of the top bar at English `at`; true when tapped.
@@ -678,6 +903,23 @@ fn bar_button(
             for dy in [-6.0, 0.0, 6.0] {
                 p.circle_filled(c + egui::vec2(0.0, dy), 2.0, ink);
             }
+        }
+        Glyph::SelectAll => {
+            let stroke = egui::Stroke::new(2.0, ink);
+            p.rect_stroke(
+                egui::Rect::from_center_size(c, egui::vec2(16.0, 16.0)),
+                2.0,
+                stroke,
+                egui::StrokeKind::Middle,
+            );
+            p.line_segment(
+                [c + egui::vec2(-4.0, 0.0), c + egui::vec2(-1.0, 3.5)],
+                stroke,
+            );
+            p.line_segment(
+                [c + egui::vec2(-1.0, 3.5), c + egui::vec2(4.5, -3.5)],
+                stroke,
+            );
         }
         Glyph::Close => {
             let stroke = egui::Stroke::new(2.0, ink);

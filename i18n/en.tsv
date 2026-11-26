@@ -123,7 +123,7 @@
 #. Options → Archives: beside the Archive passwords button: how many are saved
 #. {n} = a number (keep the braces as they are)
 @plural	{n} saved|{n} saved	{n} saved|{n} saved
-#. count in the main window
+#. count in the main window; count in phone.rs
 #. {n} = a number (keep the braces as they are)
 @plural	{n} selected|{n} selected	{n} selected|{n} selected
 #. count in the Options window
@@ -2999,7 +2999,8 @@
 #. text in the Link grabber window
 #. Link grabber: where links came from: the clipboard (pasted with Ctrl+V)
 	Pasted	Pasted
-#. text in a download's progress window; text in remote.rs
+#. text in phone.rs; text in a download's progress window; text in remote.rs
+#. verb: a download's own button in the phone's list
 #. verb: pause the download
 #. remote control page (on a phone): button: pause a download
 	Pause	Pause
@@ -3236,7 +3237,8 @@
 #. text in a download's Properties window
 #. {result} = how the last attempt ended (a status or an error message)
 	Result: {result}	Result: {result}
-#. text in a download's progress window
+#. text in phone.rs; text in a download's progress window
+#. verb: a download's own button in the phone's list
 #. verb: continue the download
 	Resume	Resume
 #. text in a download's progress window
@@ -4747,7 +4749,7 @@
 #. Helpers: a newer version is downloaded and checked, and is used as soon as the downloads using this helper end; {version} = its version
 #. {version} = a version number (keep the braces as they are)
 	Version {version} is ready: used once its downloads end	Version {version} is ready: used once its downloads end
-#. text in the download list (sizes, speeds, status)
+#. text in the download list (sizes, speeds, status); text in phone.rs
 #. category name: video files
 	Video	Video
 #. text in the Download video window
@@ -6617,7 +6619,7 @@ toolbar	Preview	Preview
 #. toolbar button in the main window; toolbar button in phone.rs
 #. verb: continue the selected downloads
 toolbar	Resume	Resume
-#. toolbar button in the main window
+#. toolbar button in the main window; toolbar button in phone.rs
 #. noun: the tool that starts and stops queues on time
 toolbar	Scheduler	Scheduler
 #. toolbar button in the main window
@@ -6625,7 +6627,7 @@ toolbar	Start Queue	Start Queue
 #. toolbar button in android.rs; toolbar button in the main window; toolbar button in phone.rs
 #. verb: stop the selected downloads
 toolbar	Stop	Stop
-#. toolbar button in android.rs; toolbar button in the main window
+#. toolbar button in android.rs; toolbar button in the main window; toolbar button in phone.rs
 toolbar	Stop All	Stop All
 #. toolbar button in the main window
 toolbar	Stop Queue	Stop Queue
