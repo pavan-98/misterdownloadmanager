@@ -45,14 +45,16 @@ code). A release build and its signing are the maintainer's.
   opened or shared; files out: **Open**, **Open with...** and **Open folder** through Android's
   apps
 - Sign-ins in Android's keystore, the Scheduler's exact alarms, the clipboard
+- The **...** buttons through Android's pickers: a folder on the phone's storage (or a card), a
+  file to open copied into the app's cache, a file to save in a folder picked there
 - Video downloads with the APK's Python, ffmpeg and QuickJS; 7z and RAR with its 7-Zip
 
 ## Not yet
 
-- The folder and file pickers (**...** buttons) answer "cancelled"
 - Options' sections keep their desktop layout (a list of sections leads to them)
 - Downloads go on while the app runs in the background; if Android closes the app, they stop
-  where they were (Resume goes on from there)
+  where they were and go on at its next start (not at the phone's: Android doesn't let an app
+  open its screen by itself then)
 - A notification per download, and resuming after the phone restarts
 
 See [third_party/README.md](third_party/README.md) for where the files the build fetches come
