@@ -366,6 +366,8 @@ pub enum Action {
     Resume,
     /// Stop the download and close the dialog.
     Cancel,
+    /// Its Properties (a phone's page: the desktop's are in its menu).
+    Properties,
     /// Set this download's speed limit (bytes/s, None = off).
     /// This download's limit (None: unlimited); `true`: remember it for the file.
     Limit(Option<u64>, bool),
@@ -610,7 +612,7 @@ impl Progress {
                     let action = egui::ScrollArea::vertical()
                         .show(ui, |ui| {
                             let area = ui.max_rect();
-                            self.phone_body(ui, area, item, snap, frac, bar)
+                            self.phone_body(ui, area, item, snap, frac, (bar, &drawn.segments))
                         })
                         .inner;
                     // Back (Esc) hides the page; the download goes on.
@@ -969,7 +971,7 @@ impl Progress {
         item: &Item,
         snap: Option<&Snapshot>,
         frac: Option<f64>,
-        fill: f64,
+        (fill, segments): (f64, &[(u64, f64)]),
     ) -> Action {
         const PAD: f32 = 16.0;
         const ROW: f32 = 26.0;
@@ -1069,7 +1071,20 @@ impl Progress {
         if let Some(f) = finishing.or(frac) {
             winui::expose_progress(ui, bar, egui::Id::unique(("progress", item.id, "bar")), f);
         }
-        y += 20.0 + PAD + 8.0;
+        y += 20.0 + 10.0;
+        // Under it, the desktop's split view: each connection's part of the file, from where it
+        // started, as far as it got.
+        let split = item.torrent.is_none() && !segments.is_empty() && item.size.is_some();
+        if split {
+            phone_segments(
+                &p,
+                egui::Rect::from_min_max(egui::pos2(left, y), egui::pos2(right, y + 12.0)),
+                item,
+                segments,
+            );
+            y += 12.0;
+        }
+        y += PAD + 6.0;
 
         // The buttons: the site's page opened in the browser (#701), then Pause or Resume and
         // Cancel, side by side.
@@ -1110,7 +1125,62 @@ impl Progress {
         if winui::button(ui, cancel_at, "Cancel", ButtonKind::Normal, false, None).clicked() {
             action = Action::Cancel;
         }
+        y += height + 8.0;
+        // Its Properties and its folder, as its menu has them on the desktop.
+        let props_at = winui::rect(egui::Rect::from_min_size(
+            egui::pos2(left, y),
+            egui::vec2(half, height),
+        ));
+        // The menu's word (translated there).
+        let props = crate::i18n::tc("menu", "Properties");
+        if winui::button(ui, props_at, props, ButtonKind::Normal, false, None).clicked() {
+            action = Action::Properties;
+        }
+        let folder_at = winui::rect(egui::Rect::from_min_size(
+            egui::pos2(right - half, y),
+            egui::vec2(half, height),
+        ));
+        // i18n: button that opens the folder the download is saved in
+        if winui::button(
+            ui,
+            folder_at,
+            "Open folder",
+            ButtonKind::Normal,
+            false,
+            None,
+        )
+        .clicked()
+        {
+            crate::dialogs::show_in_folder(&item.dest);
+        }
         y += height + PAD;
+        // Its connections, each with what it got and what it is doing (the desktop's table).
+        let mut conns: Vec<_> = snap
+            .map(|s| s.connections.iter().collect())
+            .unwrap_or_default();
+        conns.sort_by_key(|c| c.id);
+        if split && !conns.is_empty() {
+            winui::text(
+                &p,
+                left,
+                y,
+                crate::i18n::t("Start positions and download progress by connections"),
+                winui::MUTED(),
+            );
+            y += 10.0;
+            for c in conns {
+                y += ROW;
+                let n = (c.id + 1).to_string();
+                winui::text(&p, left, y, &n, winui::MUTED());
+                winui::text(&p, left + 28.0, y, &size3(c.downloaded), winui::TEXT());
+                let info = conn_info(&c.status);
+                let (rect, cut) = winui::text_fit(&p, left + 120.0, y, &info, winui::TEXT(), right);
+                if cut {
+                    winui::full_on_hover(ui, rect, ("phone-conn", c.id), &info);
+                }
+            }
+            y += PAD;
+        }
         // The scrolled height: what was laid out.
         ui.allocate_rect(
             egui::Rect::from_min_max(o, egui::pos2(area.max.x, y)),
@@ -2583,6 +2653,36 @@ fn segment_bar(p: &egui::Painter, o: Pos2, item: &Item, segments: &[(u64, f64)])
     }
 }
 
+/// A phone's split view at screen `at`: a rounded track, each connection's part filled from
+/// where it started as far as it got, its start marked.
+fn phone_segments(p: &egui::Painter, at: egui::Rect, item: &Item, segments: &[(u64, f64)]) {
+    let colors = crate::theme::colors();
+    p.rect_filled(at, 3.0, colors.progress_track);
+    let Some(total) = item.size.filter(|t| *t > 0) else {
+        return;
+    };
+    let w = f64::from(at.width());
+    let x = |col: f32| {
+        if winui::rtl() {
+            at.max.x - col
+        } else {
+            at.min.x + col
+        }
+    };
+    for &(start, done) in segments {
+        if let Some((a, b)) = segment_columns(start, done, total, w) {
+            let (l, r) = (x(a - 1.0), x(b + 1.0));
+            p.rect_filled(
+                egui::Rect::from_x_y_ranges(l.min(r)..=l.max(r), at.y_range()),
+                0.0,
+                colors.progress_bar,
+            );
+        }
+        let sx = x((start as f64 / total as f64 * w) as f32);
+        p.vline(sx, at.y_range(), egui::Stroke::new(1.5, colors.text));
+    }
+}
+
 /// The Pause button's label and kind: a live stream being recorded is stopped and saved (still
 /// `Action::Pause`, the app's `halt` saves it), and while it is saved the button waits. An
 /// endless stream (`Item::endless`, #1780) is stopped and kept the same way.
@@ -2662,6 +2762,33 @@ fn helper_line(why: &mdm_tools::streams::Helper) -> String {
 fn connections_bg() -> Color32 {
     let own = crate::theme::colors().connections;
     if own.a() > 0 { own } else { winui::FIELD() }
+}
+
+/// What a connection is doing, in words: the connections table's Info.
+fn conn_info(status: &ConnStatus) -> String {
+    match status {
+        ConnStatus::Connecting => crate::i18n::t("Connecting...").to_owned(),
+        ConnStatus::Receiving => crate::i18n::t("Receiving data...").to_owned(),
+        ConnStatus::Retrying(e) => crate::i18n::fmt(
+            // i18n: a connection's state: it failed and tries again, with the reason
+            crate::i18n::t("Retrying: {error}"),
+            &[("error", &crate::errors::describe(e))],
+        ),
+        ConnStatus::Finished => String::new(),
+        ConnStatus::Failed(e) => crate::i18n::fmt(
+            crate::i18n::t("Error: {error}"),
+            &[("error", &crate::errors::describe(e))],
+        ),
+        ConnStatus::Retired { host, cap } => crate::i18n::fmt(
+            // i18n: a connection closed because the server allows only that many
+            &crate::i18n::tn(
+                u64::from(*cap),
+                "{host} allows {n} connection",
+                "{host} allows {n} connections",
+            ),
+            &[("host", &crate::i18n::ltr(host))],
+        ),
+    }
 }
 
 /// The connections table (spec "Connections table"): N. · Downloaded · Info.
@@ -2750,29 +2877,7 @@ fn connections(ui: &mut Ui, p: &egui::Painter, o: Pos2, snap: Option<&Snapshot>)
             &size3(c.downloaded),
             winui::TEXT(),
         );
-        let info = match &c.status {
-            ConnStatus::Connecting => crate::i18n::t("Connecting...").to_owned(),
-            ConnStatus::Receiving => crate::i18n::t("Receiving data...").to_owned(),
-            ConnStatus::Retrying(e) => crate::i18n::fmt(
-                // i18n: a connection's state: it failed and tries again, with the reason
-                crate::i18n::t("Retrying: {error}"),
-                &[("error", &crate::errors::describe(e))],
-            ),
-            ConnStatus::Finished => String::new(),
-            ConnStatus::Failed(e) => crate::i18n::fmt(
-                crate::i18n::t("Error: {error}"),
-                &[("error", &crate::errors::describe(e))],
-            ),
-            ConnStatus::Retired { host, cap } => crate::i18n::fmt(
-                // i18n: a connection closed because the server allows only that many
-                &crate::i18n::tn(
-                    u64::from(*cap),
-                    "{host} allows {n} connection",
-                    "{host} allows {n} connections",
-                ),
-                &[("host", &crate::i18n::ltr(host))],
-            ),
-        };
+        let info = conn_info(&c.status);
         // The Info column ends at the scrollbar.
         let (rect, cut) = winui::text_fit(
             &clip,

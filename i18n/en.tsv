@@ -74,7 +74,7 @@
 #. count in the download list (sizes, speeds, status)
 #. {n} = a number (keep the braces as they are)
 @plural	{n} byte|{n} bytes	{n} byte|{n} bytes
-#. count in the main window
+#. count in the main window; count in phone.rs
 #. {n} = a number (keep the braces as they are)
 @plural	{n} download|{n} downloads	{n} download|{n} downloads
 #. count in a dialog box
@@ -84,7 +84,7 @@
 #. count in preview.rs
 #. {n} = a number (keep the braces as they are)
 @plural	{n} download selected|{n} downloads selected	{n} download selected|{n} downloads selected
-#. count in the main window
+#. count in the main window; count in phone.rs
 #. {n} = a number (keep the braces as they are)
 @plural	{n} downloading|{n} downloading	{n} downloading|{n} downloading
 #. count in extracting archives (a download's log, the Archive password window)
@@ -440,7 +440,7 @@
 #. text in countries.rs
 #. a country's name (where a download's server is)
 	Algeria	Algeria
-#. text in remote.rs
+#. text in phone.rs; text in remote.rs
 #. remote control page (on a phone): tab: every download
 	All	All
 #. item in the Categories tree in the main window; text in phone.rs
@@ -2407,7 +2407,7 @@
 #. text in a download's progress window
 #. legend: pieces not downloaded yet
 	Missing	Missing
-#. message or event log entry in the main window; window title in a dialog box; text in the Help menu's windows (About, updates, shortcuts, Tell a friend)
+#. message or event log entry in the main window; window title in a dialog box; text in the Help menu's windows (About, updates, shortcuts, Tell a friend); text in phone.rs
 	Mister Download Manager	Mister Download Manager
 #. text in unix.rs
 #. Linux, at start, on the terminal and in a message box: a library the window needs isn't installed; {libraries} = its file names (libxkbcommon-x11.so.0…), left as they are
@@ -2882,9 +2882,10 @@
 #. title of the message when a downloaded file can't be opened
 #. verb: opens the file
 	Open	Open
-#. button in crashui.rs; button in a dialog box; text in a dialog box; button in torrentfiles.rs
+#. button in crashui.rs; button in a dialog box; text in a dialog box; button in a download's progress window; button in torrentfiles.rs
 #. crash report window button: show the report's file in its folder
 #. title of the message when the folder of a downloaded file can't be shown
+#. button that opens the folder the download is saved in
 #. button that opens the torrent's containing folder in the file manager
 	Open folder	Open folder
 #. text in the Link grabber window; text in a download's progress window
@@ -6459,7 +6460,7 @@ menu	OpenGL's first frame didn't show within 10 seconds	OpenGL's first frame did
 #. menu command in the main window
 #. View → Draw with: a greyed note; why MDM no longer draws with OpenGL: MDM crashed or was closed while starting with it
 menu	OpenGL's last start ended before its first frame	OpenGL's last start ended before its first frame
-#. menu command in the main window
+#. menu command in the main window; menu command in a download's progress window
 #. what double-clicking a download does — noun: show its properties
 #. noun: opens the download's Properties window
 #. noun: opens the category's properties
