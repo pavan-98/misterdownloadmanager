@@ -637,9 +637,12 @@ fn dialog_window<T>(
         crate::crash::window(id);
         let (out, closed) = crate::app::phone::sheet(ctx, key.with("sheet"), title, bg, |ui| {
             keyboard_to_click(ui.ctx());
-            let out = scroll(ui, key, client, |ui, o| {
-                let _surface = winui::Surface::enter(o.x, o.x + client[0]);
-                body(ui, o)
+            // Laid out wider than the phone: drawn smaller to fit (phone.rs).
+            let out = crate::app::phone::fitted(ui, key, client[0], |ui| {
+                scroll(ui, key, client, |ui, o| {
+                    let _surface = winui::Surface::enter(o.x, o.x + client[0]);
+                    body(ui, o)
+                })
             });
             crate::chrome::tell_screen_readers(ui.ctx());
             out

@@ -2110,6 +2110,11 @@ pub fn apply_theme(ctx: &egui::Context) {
     ctx.set_visuals_of(egui::Theme::Light, visuals(Visuals::light(), &theme.light));
     let margin = |v: f32| v.round().clamp(0.0, 127.0) as i8;
     ctx.all_styles_mut(|s| {
+        // A finger is wider than a pointer: on Android a touch near a control (a desktop
+        // window's small button, check box or field, on a phone's page) still reaches it.
+        if cfg!(target_os = "android") {
+            s.interaction.interact_radius = 12.0;
+        }
         s.spacing.tooltip_width = m.tooltip_width;
         s.spacing.menu_margin = egui::Margin {
             left: margin(m.tooltip_margin_x),

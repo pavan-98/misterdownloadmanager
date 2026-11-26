@@ -41,11 +41,22 @@ pub(crate) fn sheet<R>(
     body: impl FnOnce(&mut Ui) -> R,
 ) -> (R, bool) {
     let room = ctx.content_rect();
+    // Opening, it comes in from the trailing side and fades in, as Android's pages do.
+    let shown = entrance(ctx, id, 0.25);
+    let from = room.width() * 0.3 * (1.0 - shown);
+    ctx.set_transform_layer(
+        egui::LayerId::new(egui::Order::Foreground, id),
+        egui::emath::TSTransform::from_translation(egui::vec2(
+            if winui::rtl() { -from } else { from },
+            0.0,
+        )),
+    );
     egui::Area::new(id)
         .order(egui::Order::Foreground)
         .fixed_pos(room.min)
         .movable(false)
         .constrain(false)
+        .fade_in(true)
         .show(ctx, |ui| {
             ui.set_min_size(room.size());
             ui.set_max_size(room.size());
@@ -89,6 +100,70 @@ pub(crate) fn sheet<R>(
             (body(&mut rest), closed)
         })
         .inner
+}
+
+/// How far the entrance of what `id` names has come, from 0 to 1, eased out (fast, then
+/// settling) over `secs`: counted from the first pass it is drawn in after one it wasn't, so it
+/// plays each time it opens. Asks for the frames it needs.
+fn entrance(ctx: &egui::Context, id: egui::Id, secs: f64) -> f32 {
+    let now = ctx.input(|i| i.time);
+    let pass = ctx.cumulative_pass_nr();
+    let key = id.with("entrance");
+    let since = match ctx.data(|d| d.get_temp::<(f64, u64)>(key)) {
+        Some((since, last)) if last + 1 >= pass => since,
+        _ => now,
+    };
+    ctx.data_mut(|d| d.insert_temp(key, (since, pass)));
+    let t = ((now - since) / secs).clamp(0.0, 1.0) as f32;
+    if t < 1.0 {
+        ctx.request_repaint();
+    }
+    1.0 - (1.0 - t).powi(3)
+}
+
+/// A page laid out wider than the phone (a desktop window's layout: Download video, the
+/// Scheduler...) drawn smaller to fit its width, so every control and button is on the screen:
+/// in a layer of its own, scaled (input too) from the top left of `ui`'s room. `width` is the
+/// layout's; `body` gets a room that wide, and as much taller as it was made smaller.
+pub(crate) fn fitted<R>(
+    ui: &mut Ui,
+    id: egui::Id,
+    width: f32,
+    body: impl FnOnce(&mut Ui) -> R,
+) -> R {
+    let view = ui.max_rect();
+    let s = (view.width() / width).min(1.0);
+    if s > 0.995 {
+        return body(ui);
+    }
+    let layer = egui::LayerId::new(ui.layer_id().order, id.with("fitted"));
+    let parent = ui
+        .ctx()
+        .layer_transform_to_global(ui.layer_id())
+        .unwrap_or(egui::emath::TSTransform::IDENTITY);
+    let fit = egui::emath::TSTransform::new(view.min.to_vec2() * (1.0 - s), s);
+    let to_screen = parent * fit;
+    ui.ctx().set_transform_layer(layer, to_screen);
+    ui.ctx().set_sublayer(ui.layer_id(), layer);
+    let room = egui::Rect::from_min_size(view.min, view.size() / s);
+    let mut inner = ui.new_child(egui::UiBuilder::new().layer_id(layer).max_rect(room));
+    inner.set_clip_rect(room);
+    ui.ctx().data_mut(|d| d.insert_temp(fit_key(), to_screen));
+    let out = body(&mut inner);
+    ui.ctx()
+        .data_mut(|d| d.remove::<egui::emath::TSTransform>(fit_key()));
+    out
+}
+
+fn fit_key() -> egui::Id {
+    egui::Id::unique("phone-fitted")
+}
+
+/// `p`, a point of the page being drawn, on the screen: scaled with it while it is drawn
+/// smaller ([`fitted`]); for what is drawn in a layer of its own over it (a drop-down's list).
+pub(crate) fn to_screen(ctx: &egui::Context, p: Pos2) -> Pos2 {
+    ctx.data(|d| d.get_temp::<egui::emath::TSTransform>(fit_key()))
+        .map_or(p, |t| t * p)
 }
 
 /// Whether the main window takes the phone's layout now.
@@ -294,11 +369,19 @@ impl App {
             ctx.request_repaint();
         };
         let width = (full.width() - BAR_H).min(320.0);
-        let pane = egui::Rect::from_min_size(full.min, egui::vec2(width, full.height()));
+        // Opening, it slides in from the leading side as the rest dims.
+        let shown = entrance(&ctx, drawer_id(), 0.22);
+        let pane = egui::Rect::from_min_size(
+            pos2(full.min.x - width * (1.0 - shown), full.min.y),
+            egui::vec2(width, full.height()),
+        );
         // The rest of the window, dimmed: a tap there closes the drawer.
         let scrim = ui.interact(full, egui::Id::unique("phone-scrim"), egui::Sense::click());
-        ui.painter()
-            .rect_filled(full, 0.0, egui::Color32::from_black_alpha(110));
+        ui.painter().rect_filled(
+            full,
+            0.0,
+            egui::Color32::from_black_alpha((110.0 * shown) as u8),
+        );
         let mut view = None;
         let pane_screen = winui::rect(pane);
         ui.painter().rect_filled(pane_screen, 0.0, colors().tree);
@@ -674,14 +757,20 @@ fn menu_sheet<C: Clone>(
     }
     let rows = here.len() + usize::from(title.is_some());
     let height = (rows as f32 * MENU_ROW_H + 16.0).min(full.height() * 0.85);
-    let sheet = egui::Rect::from_min_max(pos2(full.min.x, full.max.y - height), full.max);
+    // Opening, it rises from the bottom as the window behind it dims.
+    let shown = entrance(&ctx, egui::Id::unique(("phone-menu", serial)), 0.22);
+    let sheet = egui::Rect::from_min_max(pos2(full.min.x, full.max.y - height), full.max)
+        .translate(egui::vec2(0.0, height * (1.0 - shown)));
     let scrim = ui.interact(
         full,
         egui::Id::unique(("phone-menu-scrim", serial)),
         egui::Sense::click(),
     );
-    ui.painter()
-        .rect_filled(full, 0.0, egui::Color32::from_black_alpha(110));
+    ui.painter().rect_filled(
+        full,
+        0.0,
+        egui::Color32::from_black_alpha((110.0 * shown) as u8),
+    );
     ui.painter().rect_filled(
         sheet,
         egui::CornerRadius {

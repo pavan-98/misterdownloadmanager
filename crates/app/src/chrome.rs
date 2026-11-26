@@ -1065,6 +1065,8 @@ pub fn popup_with<C: Clone>(
     hint: &dyn Fn(&C) -> Option<&'static str>,
     font: &dyn Fn(&C) -> Option<egui::FontId>,
 ) -> PopupResult<C> {
+    // On a phone, from a page drawn smaller to fit (phone::fitted): where that is on the screen.
+    let pos = crate::app::phone::to_screen(ctx, pos);
     let sub_key = egui::Id::unique(("popup-sub", id));
     // The control that has the keys while the menu is open (a drop-down list, a text box): the
     // menu's windows never take them, so Escape reached its window, and egui let them go there

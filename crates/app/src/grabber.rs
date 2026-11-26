@@ -25,6 +25,16 @@ use crate::winui::{self, ButtonKind, LIGHT_BG, LIGHT_TEXT, fill_l as fill, r, te
 const ROW: f32 = 18.0;
 /// The top of the window's last row of buttons (Add to queue, Start, Cancel).
 const BUTTONS_Y: f32 = 446.0;
+
+/// The window's width: the desktop's, or on a phone (phone.rs) a narrower layout, drawn smaller
+/// to fit the screen and still read (the list and the fields take what it leaves).
+fn width(ctx: &egui::Context) -> f32 {
+    if crate::app::phone::active(ctx) {
+        520.0
+    } else {
+        640.0
+    }
+}
 /// Links looked up at once, and at once from one host.
 const CHECKS: usize = 8;
 const CHECKS_PER_HOST: usize = 4;
@@ -757,7 +767,7 @@ impl Grabber {
             ctx,
             "grabber",
             "Link grabber",
-            [640.0, BUTTONS_Y + 30.0],
+            [width(ctx), BUTTONS_Y + 30.0],
             true,
             LIGHT_BG(),
             |ui, o| self.body(ui, o),
@@ -797,12 +807,12 @@ impl Grabber {
             o.y + 20.0,
             &line,
             LIGHT_TEXT(),
-            o.x + 629.0,
+            o.x + width(ui.ctx()) - 11.0,
             "grabber-source",
         );
         self.list(
             ui,
-            Rect::from_min_size(o + vec2(11.0, 30.0), vec2(618.0, 258.0)),
+            Rect::from_min_size(o + vec2(11.0, 30.0), vec2(width(ui.ctx()) - 22.0, 258.0)),
         );
 
         // Under the list: Hide web pages, the count, Check all / Uncheck all.
@@ -828,7 +838,7 @@ impl Grabber {
         let picks = winui::buttons_light_right(
             ui,
             o,
-            629.0,
+            width(ui.ctx()) - 11.0,
             296.0,
             &[
                 // i18n: Link grabber button (IDM's): tick every link
@@ -858,7 +868,7 @@ impl Grabber {
         let row = winui::buttons_light_right(
             ui,
             o,
-            629.0,
+            width(ui.ctx()) - 11.0,
             BUTTONS_Y,
             &[
                 // i18n: Link grabber button: add the ticked links to the download queue without starting them (IDM's OK)
@@ -1178,6 +1188,8 @@ impl Grabber {
 
     /// The selected package's name, folder, password and what happens to its archives.
     fn package_box(&mut self, ui: &mut Ui, o: Pos2) {
+        // The fields' right edge (the box's, less its padding).
+        let right = width(ui.ctx()) - 19.0;
         let p = ui.painter().clone();
         // A package has a row when some of its links show.
         let shown = self.shown();
@@ -1191,7 +1203,7 @@ impl Grabber {
         let cw = winui::text_width(&p, caption);
         winui::group_box(
             &p,
-            r(o, 11.0, 330.0, 618.0, 106.0),
+            r(o, 11.0, 330.0, width(ui.ctx()) - 22.0, 106.0),
             Some((o.x + 18.0, o.x + 22.0 + cw)),
         );
         text(&p, o.x + 20.0, o.y + 334.0, caption, LIGHT_TEXT());
@@ -1251,7 +1263,7 @@ impl Grabber {
             false,
         );
         label(ui, pw_x, 360.0, pw_label, pbx - 4.0);
-        let pw = winui::password_light(ui, r(o, pbx, 345.0, 621.0 - pbx, 23.0), password, enabled);
+        let pw = winui::password_light(ui, r(o, pbx, 345.0, right - pbx, 23.0), password, enabled);
         // i18n: what a screen reader calls Link grabber's password box
         let pw_name = crate::i18n::t("Archive password");
         ui.ctx().accesskit_node_builder(pw.id, |n| {
@@ -1266,7 +1278,7 @@ impl Grabber {
         let bw = winui::button_width(&p, "Browse", 73.0);
         let typed = winui::edit_light(
             ui,
-            r(o, bx, 376.0, 621.0 - bw - 8.0 - bx, 23.0),
+            r(o, bx, 376.0, right - bw - 8.0 - bx, 23.0),
             folder,
             enabled,
             false,
@@ -1281,13 +1293,13 @@ impl Grabber {
                 o.y + 391.0,
                 each,
                 winui::MUTED(),
-                o.x + 621.0 - bw - 12.0,
+                o.x + right - bw - 12.0,
                 "grabber-each",
             );
         }
         let browse = winui::button_light(
             ui,
-            r(o, 621.0 - bw, 377.0, bw, 21.0),
+            r(o, right - bw, 377.0, bw, 21.0),
             "Browse",
             if enabled {
                 ButtonKind::Normal
