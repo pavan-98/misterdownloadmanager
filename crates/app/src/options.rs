@@ -607,6 +607,27 @@ impl OptionsDialog {
             63.0,
             405.0,
         );
+        // A phone (phone.rs): only what means something there. No start with the system, no
+        // browser add-on to integrate with or keys for it, no notification-area icon, no global
+        // shortcut (Android has none of them for an app).
+        if crate::app::phone::active(ui.ctx()) {
+            let s = &mut self.s;
+            for (y, v, label) in [
+                (
+                    94.0,
+                    &mut s.clipboard_autostart,
+                    "Offer to download links copied to the clipboard",
+                ),
+                (
+                    122.0,
+                    &mut s.confirm_delete,
+                    "Confirm before deleting downloads",
+                ),
+            ] {
+                winui::checkbox_light(ui, o + vec2(30.0, y), v, label, true);
+            }
+            return;
+        }
         let portable = mdm_ipc::portable_dir().is_some();
         let s = &mut self.s;
         if portable {

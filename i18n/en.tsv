@@ -191,6 +191,9 @@
 #. text in the Scheduler window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 	&Start now	&Start now
+#. text in android.rs
+#. & marks the keyboard shortcut letter: keep one & before a letter of the translation
+	&Stop All	&Stop All
 #. text in the Options window
 #. under Download panels site exclusions list
 	(separate by spaces; * matches anything)	(separate by spaces; * matches anything)
