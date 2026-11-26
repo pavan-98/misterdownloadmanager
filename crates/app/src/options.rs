@@ -5387,7 +5387,7 @@ impl OptionsDialog {
                 winui::MUTED(),
             );
             p.hline(
-                winui::rect(r(o, 16.0, y + PHONE_ROW - 1.0, width - 16.0, 1.0)).x_range(),
+                r(o, 16.0, y + PHONE_ROW - 1.0, width - 16.0, 1.0).x_range(),
                 o.y + y + PHONE_ROW - 0.5,
                 egui::Stroke::new(1.0, winui::HEADER_LINE()),
             );
