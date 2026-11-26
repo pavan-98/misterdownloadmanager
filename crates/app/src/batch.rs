@@ -389,13 +389,13 @@ impl Batch {
             true,
         );
         let on = self.auth;
-        // i18n: noun: the user name for the server (an input box follows)
         // On a phone the password under the login, both as wide as the box lets them be.
         let (login_x, field_x, login_w) = if phone {
             (30.0, 116.0, w - 21.0 - 9.0 - 116.0)
         } else {
             (85.0, 116.0, 117.0)
         };
+        // i18n: noun: the user name for the server (an input box follows)
         winui::label(&p, o.x + login_x, o.y + 236.0, crate::i18n::t("Login"), on);
         winui::edit_light(
             ui,

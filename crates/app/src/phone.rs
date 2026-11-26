@@ -852,10 +852,11 @@ fn row_button(ui: &Ui, screen: egui::Rect, pause: bool, r: &egui::Response) {
     winui::expose(
         r,
         egui::Role::Button,
-        // i18n: verb: a download's own button in the phone's list
         if pause {
+            // i18n: verb: a download's own button in the phone's list
             crate::i18n::t("Pause")
         } else {
+            // i18n: verb: a download's own button in the phone's list
             crate::i18n::t("Resume")
         },
         true,
