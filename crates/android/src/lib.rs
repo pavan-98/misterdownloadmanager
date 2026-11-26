@@ -268,6 +268,16 @@ impl mdm_app::android::Host for JavaHost {
         self.call("toBack", [None; 4]).is_ok()
     }
 
+    fn pick(&self, kind: &str, dir: Option<&str>) -> Option<String> {
+        match self.call("pick", [Some(kind), dir, None, None]) {
+            Ok(path) => path,
+            Err(e) => {
+                log::warn!("the picker: {e}");
+                None
+            }
+        }
+    }
+
     fn clipboard(&self, op: &str, text: Option<&str>) -> Result<Option<String>, String> {
         self.call("clipboard", [Some(op), text, None, None])
     }

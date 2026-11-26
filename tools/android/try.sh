@@ -103,6 +103,13 @@ adb shell input tap 540 1890
 shot 10c-options
 adb shell input tap 540 572
 shot 10d-save-to
+# Its folder's Browse: Android's folder picker (Back cancels it).
+adb shell input tap 936 928
+sleep 3
+shot 10d2-picker
+adb shell input keyevent KEYCODE_BACK
+sleep 3
+shot 10d3-picker-cancelled
 adb shell input keyevent KEYCODE_BACK
 shot 10e-options-again
 # Archives (the tenth section): the 7-Zip it found (the APK's).

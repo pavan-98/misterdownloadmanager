@@ -90,6 +90,7 @@ object Platform {
                 "err:the locks were refused"
             }
             "clipboard" -> clipboard(a.orEmpty(), b)
+            "pick" -> activity.get()?.let { Picker.pick(it, a.orEmpty()) }?.let { "ok:$it" } ?: "none"
             "status" -> {
                 DownloadService.status(app, a.orEmpty(), b.orEmpty())
                 "ok:"

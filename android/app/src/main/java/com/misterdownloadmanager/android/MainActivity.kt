@@ -63,6 +63,15 @@ class MainActivity : GameActivity() {
         super.onEditorAction(action)
     }
 
+    /** A picker's answer (the "..." buttons, [Picker]). */
+    @Deprecated("The picker's result, as startActivityForResult gives it")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!Picker.result(requestCode, resultCode, data)) {
+            @Suppress("DEPRECATION")
+            super.onActivityResult(requestCode, resultCode, data)
+        }
+    }
+
     /** A link handed over while the app runs (singleTask: the activity on screen gets it). */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

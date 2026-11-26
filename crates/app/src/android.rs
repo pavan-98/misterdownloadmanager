@@ -42,6 +42,10 @@ pub trait Host: Send + Sync + 'static {
     /// when it holds none), `set` (`text` on it) or `changes` (a number that changes whenever a
     /// new clip is copied, so the watch for copied links reads it only then).
     fn clipboard(&self, op: &str, text: Option<&str>) -> Result<Option<String>, String>;
+    /// Android's picker, waiting for the person: `kind` is `folder` (its path on the shared
+    /// storage) or `file` (a copy in the app's cache MDM can read); `dir`, where to start. None:
+    /// cancelled, or a place MDM can't use.
+    fn pick(&self, kind: &str, dir: Option<&str>) -> Option<String>;
 }
 
 /// The clipboard's text ([`Host::clipboard`]), as lib.rs `clipboard_text` reads it elsewhere.
@@ -144,6 +148,17 @@ pub fn run(
         }
     });
     let sink = mdm_ipc::Sink::new(tx.clone(), wake.clone());
+    // The file and folder pickers ("..." buttons): Android's, through the Host.
+    let _ = rfd::set_picker(Box::new(|kind, dir| {
+        let kind = match kind {
+            rfd::Pick::Folder => "folder",
+            rfd::Pick::File => "file",
+        };
+        let dir = dir.map(|d| d.to_string_lossy().into_owned());
+        host()?
+            .pick(kind, dir.as_deref())
+            .map(std::path::PathBuf::from)
+    }));
     // Links other apps hand over (Share, a link opened with MDM) reach the app from here on,
     // those that came before it started first.
     links_channel(Some((tx.clone(), wake.clone())));
@@ -807,6 +822,9 @@ mod tests {
         }
         fn to_back(&self) -> bool {
             true
+        }
+        fn pick(&self, kind: &str, _dir: Option<&str>) -> Option<String> {
+            Some(format!("/picked/{kind}"))
         }
         fn clipboard(&self, op: &str, text: Option<&str>) -> Result<Option<String>, String> {
             let mut clip = self.clip.lock().unwrap();
