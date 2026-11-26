@@ -1167,10 +1167,21 @@ pub fn popup_with<C: Clone>(
         ctx.request_repaint_after(std::time::Duration::from_secs_f64(wait));
     }
     let lost_focus = verdict == FocusVerdict::Left;
-    if !first
-        && (lost_focus
-            || ctx.input(|i| i.key_pressed(egui::Key::Escape) || i.pointer.any_pressed()))
-    {
+    // A phone (phone.rs): the menus are drawn in the window, so a press there is one away from
+    // them only outside them (the levels drawn this pass).
+    let on_menu = |p: Pos2| {
+        (0..4).any(|depth| {
+            ctx.data(|d| d.get_temp::<(Rect, u64)>(sub_key.with(("level-rect", depth))))
+                .is_some_and(|(r, drawn)| drawn == pass && r.contains(p))
+        })
+    };
+    let press = ctx.input(|i| i.pointer.any_pressed().then(|| i.pointer.press_origin()));
+    let pressed_away = match press {
+        None => false,
+        Some(Some(p)) if crate::app::phone::active(ctx) => !on_menu(p),
+        Some(_) => true,
+    };
+    if !first && (lost_focus || ctx.input(|i| i.key_pressed(egui::Key::Escape)) || pressed_away) {
         // Closed by a press: where it was, so the control that opened it doesn't take that
         // press's click (on release) as opening it again (winui::opener_click). Read before
         // the data lock (asking the context inside it deadlocks).
@@ -1610,6 +1621,10 @@ fn popup_level<C: Clone>(
         .data(|d| d.get_temp::<(Option<usize>, Option<usize>)>(kb_key))
         .and_then(|(a, b)| if depth == 0 { a } else { b });
     let screen = Rect::from_min_size(place_menu(ctx, at, size, parent), size);
+    // Where this level is, this pass: on a phone the menus are in the window, and a press on
+    // them isn't one away from them (`popup`).
+    let pass = ctx.cumulative_pass_nr();
+    ctx.data_mut(|d| d.insert_temp(sub_key.with(("level-rect", depth)), (screen, pass)));
     if depth == 1 {
         // Where the submenu is, for its menu's next pass (`heading_into`, #579).
         ctx.data_mut(|d| d.insert_temp(sub_key.with("sub-rect"), screen));
@@ -1634,11 +1649,18 @@ fn popup_level<C: Clone>(
     // Set when this pass made the new (hidden) window a menu window: shown below. (Elsewhere a
     // menu's window is created visible.)
     let mut styled = false;
-    ctx.show_viewport_immediate(vid, builder, |ui, _| {
+    // A phone (phone.rs): the menu in the window, over everything, where it was placed (egui
+    // places a window of its own itself, and frames it); not a window of the system's.
+    let phone = crate::app::phone::active(ctx);
+    let mut draw = |ui: &mut Ui| {
         // Made a menu window in its own pass, before anything is drawn in it (style_popup).
-        styled = style_popup(&title, PopupLook::Menu);
+        if !phone {
+            styled = style_popup(&title, PopupLook::Menu);
+        }
         // The window's name is the menu's, not the window's internal id (#1407).
-        if let Some(name) = menu_frame_name(kind, id) {
+        if let Some(name) = menu_frame_name(kind, id)
+            && !phone
+        {
             crate::winui::name_window(ui, &name);
         }
         // What happens in this window, for popup() and keyboard(), which run in the parent's
@@ -1970,7 +1992,19 @@ fn popup_level<C: Clone>(
             }
             y += SLOT;
         }
-    });
+    };
+    if phone {
+        egui::Area::new(egui::Id::unique(vid))
+            .order(egui::Order::Tooltip)
+            .fixed_pos(screen.min)
+            .constrain(false)
+            .show(ctx, |ui| {
+                ui.set_min_size(size);
+                draw(ui);
+            });
+    } else {
+        ctx.show_viewport_immediate(vid, builder, |ui, _| draw(ui));
+    }
     if styled {
         show_popup(ctx, vid);
     }
