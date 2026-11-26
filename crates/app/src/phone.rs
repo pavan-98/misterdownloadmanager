@@ -161,6 +161,16 @@ pub(crate) fn button_rects(
     (rects, (y - GAP - top).max(0.0))
 }
 
+/// How much taller a window is on a phone for `rows` rows of big buttons ([`button_rects`])
+/// where the desktop has one row of 21 pt buttons; nothing elsewhere.
+pub(crate) fn phone_buttons_extra(ctx: &egui::Context, rows: usize) -> f32 {
+    if active(ctx) {
+        rows as f32 * (BUTTON_H + 8.0) - 21.0
+    } else {
+        0.0
+    }
+}
+
 /// The width a window lays itself out in: the phone's page's on a phone (its controls take the
 /// room it has), `desktop` elsewhere.
 pub(crate) fn layout_width(ctx: &egui::Context, desktop: f32) -> f32 {
