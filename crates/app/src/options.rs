@@ -2595,7 +2595,11 @@ impl OptionsDialog {
                 self.sub = Some(Sub::Login(Some(i), site, user, pass));
             }
         }
-        self.video_cookies(ui, o);
+        // Not on Android: a browser's cookies are in its own app's storage, which no other app
+        // can read.
+        if !cfg!(target_os = "android") {
+            self.video_cookies(ui, o);
+        }
     }
 
     /// Sites Logins → Cookies for video sites (#229): Off, or the browser whose cookies yt-dlp
@@ -2860,19 +2864,22 @@ impl OptionsDialog {
             "opt-rar-tool",
         );
         let has_hatchzip = self.hatch_zip.is_some();
-        winui::checkbox_light(
-            ui,
-            o + vec2(30.0, 300.0),
-            &mut s.extract_in_place,
-            if has_hatchzip {
-                // i18n: Options → Archives check box: HatchZip (a program's name) removes the archive while extracting it, so only the extracted files need disk space
-                "Extract in place with HatchZip: only the files need room"
-            } else {
-                // i18n: Options → Archives check box, greyed: HatchZip (a program's name, hatchzip.dev its site) isn't installed
-                "Extract in place with HatchZip (hatchzip.dev, not installed)"
-            },
-            has_hatchzip,
-        );
+        // Not on Android, where the APK's own 7-Zip extracts them: no other program an app may run.
+        if !cfg!(target_os = "android") {
+            winui::checkbox_light(
+                ui,
+                o + vec2(30.0, 300.0),
+                &mut s.extract_in_place,
+                if has_hatchzip {
+                    // i18n: Options → Archives check box: HatchZip (a program's name) removes the archive while extracting it, so only the extracted files need disk space
+                    "Extract in place with HatchZip: only the files need room"
+                } else {
+                    // i18n: Options → Archives check box, greyed: HatchZip (a program's name, hatchzip.dev its site) isn't installed
+                    "Extract in place with HatchZip (hatchzip.dev, not installed)"
+                },
+                has_hatchzip,
+            );
+        }
         // The passwords tried on an encrypted archive before it is asked (#37).
         let (pw_x, pw_w) = winui::button_row_from_left(
             &p,
@@ -2905,18 +2912,20 @@ impl OptionsDialog {
         };
         let (tool_x, tool_w) =
             winui::buttons_to_right(&p, 394.0, 0.0, &[(tool_label, 150.0)], 200.0)[0];
-        if winui::button_light(
-            ui,
-            r(o, tool_x, 320.0, tool_w, 21.0),
-            tool_label,
-            if self.checking_7zip.is_some() {
-                ButtonKind::Disabled
-            } else {
-                ButtonKind::Normal
-            },
-            false,
-        )
-        .clicked()
+        // Not on Android either: Android runs no program an app saved itself.
+        if !cfg!(target_os = "android")
+            && winui::button_light(
+                ui,
+                r(o, tool_x, 320.0, tool_w, 21.0),
+                tool_label,
+                if self.checking_7zip.is_some() {
+                    ButtonKind::Disabled
+                } else {
+                    ButtonKind::Normal
+                },
+                false,
+            )
+            .clicked()
         {
             self.not_7zip = false;
             if own {
