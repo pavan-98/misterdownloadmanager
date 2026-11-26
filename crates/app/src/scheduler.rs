@@ -330,7 +330,10 @@ impl Scheduler {
         let naming = self.naming.is_some() || self.deleting.is_some();
         // A phone (phone.rs): the queues over the queue's page, not beside it.
         let client = if crate::app::phone::active(ctx) {
-            [651.0 - PHONE_SHIFT.x, 465.0 + DY + PHONE_SHIFT.y]
+            [
+                651.0 - PHONE_SHIFT.x,
+                465.0 + DY + PHONE_SHIFT.y + crate::app::phone::phone_buttons_extra(ctx, 3),
+            ]
         } else {
             [651.0, 465.0 + DY]
         };
@@ -525,20 +528,28 @@ impl Scheduler {
                 ButtonKind::Disabled
             }
         };
-        let btn = |ui: &mut Ui, (x, w): (f32, f32), label: &str, k: ButtonKind| {
-            winui::button_light(ui, r(o, x, 432.0 + DY, w, 21.0), label, k, false).clicked()
+        // A phone: the window's five buttons big across the page, two by two.
+        let big = phone.then(|| {
+            crate::app::phone::button_rects(o, 432.0 + DY, 651.0 - PHONE_SHIFT.x, 5, false).0
+        });
+        let btn = |ui: &mut Ui, k: usize, label: &str, kind: ButtonKind| {
+            let at = match &big {
+                Some(b) => b[k - 2],
+                None => r(o, row[k].0, 432.0 + DY, row[k].1, 21.0),
+            };
+            winui::button_light(ui, at, label, kind, false).clicked()
         };
         // i18n: verb: start the queue now
         let start = btn(
             ui,
-            row[2],
+            2,
             crate::i18n::mark("&Start now"),
             kind(on_queue && !is_running),
         );
         // i18n: verb: stop the queue
-        let stop = btn(ui, row[3], crate::i18n::mark("S&top"), kind(is_running));
+        let stop = btn(ui, 3, crate::i18n::mark("S&top"), kind(is_running));
         // i18n: noun: button that opens the help
-        if btn(ui, row[4], crate::i18n::mark("&Help"), ButtonKind::Normal) {
+        if btn(ui, 4, crate::i18n::mark("&Help"), ButtonKind::Normal) {
             crate::help::open_page("queues-and-scheduler.md#the-scheduler-window");
         }
         let dirty = {
@@ -546,9 +557,9 @@ impl Scheduler {
             (&q, &l) != (&self.applied.0, &self.applied.1)
         };
         // i18n: verb: save the changes
-        let apply = btn(ui, row[5], crate::i18n::mark("&Apply"), kind(dirty));
+        let apply = btn(ui, 5, crate::i18n::mark("&Apply"), kind(dirty));
         // i18n: verb: close the window
-        let close = btn(ui, row[6], crate::i18n::mark("&Close"), ButtonKind::Normal);
+        let close = btn(ui, 6, crate::i18n::mark("&Close"), ButtonKind::Normal);
 
         if modal {
             return Outcome::Open;
