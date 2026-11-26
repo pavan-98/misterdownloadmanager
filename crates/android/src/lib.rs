@@ -335,6 +335,16 @@ pub extern "system" fn Java_com_misterdownloadmanager_android_DownloadService_na
     mdm_app::android::stop_all_asked();
 }
 
+/// `DownloadService.nativeStop(id)`: a download's own notification's Stop.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_misterdownloadmanager_android_DownloadService_nativeStop(
+    _env: *mut jni::sys::JNIEnv,
+    _this: jni::sys::jobject,
+    id: jni::sys::jlong,
+) {
+    mdm_app::android::stop_asked(id as u64);
+}
+
 /// `MainActivity.nativeFile(path)`: a `.torrent` another app handed MDM, copied into the app's
 /// cache ([`mdm_app::android::file_given`]).
 #[unsafe(no_mangle)]

@@ -289,6 +289,19 @@ pub fn stop_all_asked() {
     }
 }
 
+/// The downloads whose own notification's Stop was tapped (`DownloadService`), for the next frame.
+#[cfg(target_os = "android")]
+static STOP_ONE: std::sync::Mutex<Vec<u64>> = std::sync::Mutex::new(Vec::new());
+
+/// `DownloadService.nativeStop(id)`: a download's notification's Stop ([`STOP_ONE`]).
+#[cfg(target_os = "android")]
+pub fn stop_asked(id: u64) {
+    STOP_ONE.lock().unwrap_or_else(|e| e.into_inner()).push(id);
+    if let Some(ctx) = CONTEXT.get() {
+        ctx.request_repaint();
+    }
+}
+
 /// The downloads' notification, kept up to date ([`Host::status`]): what it last said, and when.
 #[cfg(target_os = "android")]
 #[derive(Default)]
@@ -356,6 +369,7 @@ impl Notices {
             "done": done,
             "complete": crate::i18n::t("Download complete"),
             "open": crate::i18n::t("Open"),
+            "stop": crate::i18n::tc("toolbar", "Stop"),
         });
         if let Some(h) = host() {
             h.downloads(&words.to_string());
@@ -521,6 +535,11 @@ impl eframe::App for OnAndroid {
         if STOP_ALL.swap(false, std::sync::atomic::Ordering::Relaxed) {
             tracing::info!("the notification's Stop All");
             self.app.stop_all();
+        }
+        let stops = std::mem::take(&mut *STOP_ONE.lock().unwrap_or_else(|e| e.into_inner()));
+        for id in stops {
+            tracing::info!("the notification's Stop for download {id}");
+            self.app.stop_by_hand(id);
         }
         self.told.tell(self.app.activity());
         self.notices.tell(&self.app);

@@ -4733,7 +4733,7 @@ impl App {
     }
 
     /// The user's Stop (or Pause): it stays stopped, even in a queue that is running (#341).
-    fn stop_by_hand(&mut self, id: u64) {
+    pub(crate) fn stop_by_hand(&mut self, id: u64) {
         self.halt(id);
         self.stopped_by_hand.insert(id);
     }

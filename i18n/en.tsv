@@ -6619,7 +6619,7 @@ toolbar	Resume	Resume
 toolbar	Scheduler	Scheduler
 #. toolbar button in the main window
 toolbar	Start Queue	Start Queue
-#. toolbar button in the main window; toolbar button in phone.rs
+#. toolbar button in android.rs; toolbar button in the main window; toolbar button in phone.rs
 #. verb: stop the selected downloads
 toolbar	Stop	Stop
 #. toolbar button in android.rs; toolbar button in the main window

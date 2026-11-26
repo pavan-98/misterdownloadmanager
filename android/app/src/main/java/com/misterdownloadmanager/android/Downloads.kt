@@ -9,7 +9,7 @@ import org.json.JSONObject
 
 /**
  * Each download's own notification (`Platform.call("downloads")`, android.rs `Notices`): one per
- * running download (its name, a progress bar, its figures; a tap opens the app), and a "Download
+ * running download (its name, a progress bar, its figures, Stop; a tap opens the app), and a "Download
  * complete" one with Open for each that completes while the app runs. Re-posted only when the app
  * says something changed (at most once a second); a download that stops loses its notification.
  */
@@ -32,7 +32,8 @@ object Downloads {
         val now = mutableSetOf<Int>()
         for (i in 0 until running.length()) {
             val d = running.getJSONObject(i)
-            val id = BASE + d.getLong("id").toInt()
+            val download = d.getLong("id")
+            val id = BASE + download.toInt()
             now += id
             val percent = if (d.isNull("percent")) -1 else d.getInt("percent")
             val builder = NotificationCompat.Builder(context, DownloadService.CHANNEL)
@@ -45,6 +46,13 @@ object Downloads {
                 .setGroup(GROUP)
                 .setContentIntent(open)
                 .setProgress(100, percent.coerceAtLeast(0), percent < 0)
+                .addAction(
+                    0, words.getString("stop"),
+                    PendingIntent.getService(
+                        context, id, DownloadService.stopIntent(context, download),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    ),
+                )
             manager.notify(id, builder.build())
         }
         for (gone in shown - now) manager.cancel(gone)

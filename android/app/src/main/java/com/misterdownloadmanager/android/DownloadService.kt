@@ -29,6 +29,11 @@ class DownloadService : Service() {
             nativeStopAll()
             return START_NOT_STICKY
         }
+        // A download's own notification's Stop.
+        if (intent?.action == ACTION_STOP) {
+            nativeStop(intent.getLongExtra(EXTRA_ID, -1))
+            return START_NOT_STICKY
+        }
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: getString(R.string.app_name)
         try {
             ServiceCompat.startForeground(
@@ -56,11 +61,20 @@ class DownloadService : Service() {
     /** libmdm.so: the notification's Stop All. */
     private external fun nativeStopAll()
 
+    /** libmdm.so: a download's notification's Stop. */
+    private external fun nativeStop(id: Long)
+
     companion object {
         const val CHANNEL = "downloads"
         private const val ONGOING_ID = 1
         private const val EXTRA_TEXT = "text"
         private const val ACTION_STOP_ALL = "com.misterdownloadmanager.android.STOP_ALL"
+        private const val ACTION_STOP = "com.misterdownloadmanager.android.STOP"
+        private const val EXTRA_ID = "id"
+
+        /** What a download's notification's Stop sends: that download's id, to the app. */
+        fun stopIntent(context: Context, id: Long): Intent =
+            Intent(context, DownloadService::class.java).setAction(ACTION_STOP).putExtra(EXTRA_ID, id)
 
         /** Whether the service is in the foreground (its notification shown). */
         @Volatile
