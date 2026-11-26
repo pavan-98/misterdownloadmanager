@@ -9803,6 +9803,11 @@ impl App {
     /// Download complete for `id`, unless it is snoozed (#741): then the tray icon's tip counts
     /// it instead.
     fn complete_window(&mut self, id: u64) {
+        // Not on Android: its notification says so, with Open (android.rs `Notices`); a page
+        // over the app for each finished download isn't how Android's apps tell it.
+        if cfg!(target_os = "android") {
+            return;
+        }
         if self.snooze.active(unix_now()) {
             self.snoozed_finished += 1;
             return;
