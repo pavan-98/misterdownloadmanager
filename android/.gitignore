@@ -1,4 +1,6 @@
 .gradle/
+# The Kotlin compiler's own cache (Kotlin 2)
+.kotlin/
 build/
 local.properties
 # Gradle's wrapper, fetched and checked by gradlew (gradlew.bat): no binaries in the tree
