@@ -952,9 +952,30 @@ impl About {
                     "about-text",
                     about,
                 );
+                #[allow(unused_mut)]
+                let mut below = o.y + 72.0 + 13.0 * lines as f32;
+                // The Android app's author, in the app it credits (the maintainer's offer).
+                #[cfg(target_os = "android")]
+                {
+                    let credit = crate::i18n::fmt(
+                        // i18n: {author}: the name of the person who made the Android app
+                        crate::i18n::t("The Android app: {author}"),
+                        &[("author", "Pavan Kalyan Neerukonda")],
+                    );
+                    let more = winui::paragraph(
+                        &p,
+                        o.x + 80.0,
+                        below + 6.0,
+                        &credit,
+                        winui::MUTED(),
+                        o.x + 404.0,
+                        13.0,
+                    );
+                    below += 6.0 + 13.0 * more as f32;
+                }
                 // The links in a row, 18 px apart; one that would pass the paragraph's right
                 // edge (a long translation) starts the next row.
-                let (mut x, mut y) = (o.x + 80.0, o.y + 72.0 + 13.0 * lines as f32 + 14.0);
+                let (mut x, mut y) = (o.x + 80.0, below + 14.0);
                 let mut place = |label: &str| {
                     let w = winui::text_width(&p, crate::i18n::t(label));
                     if x > o.x + 80.0 && x + w > o.x + 404.0 {

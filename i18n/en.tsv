@@ -3882,6 +3882,9 @@
 	the .torrent file kept for it is gone	the .torrent file kept for it is gone
 #. text in a download's Properties window
 	The address must be an http(s) or ftp(s) address	The address must be an http(s) or ftp(s) address
+#. text in the Help menu's windows (About, updates, shortcuts, Tell a friend)
+#. {author}: the name of the person who made the Android app
+	The Android app: {author}	The Android app: {author}
 #. text in extracting archives (a download's log, the Archive password window)
 	The archive could not be moved to the Recycle Bin: it was kept	The archive could not be moved to the Recycle Bin: it was kept
 #. text in extracting archives (a download's log, the Archive password window)
