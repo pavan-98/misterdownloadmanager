@@ -40,7 +40,8 @@ code). A release build and its signing are the maintainer's.
   page over the list, its title in a top bar whose × closes it; **Back** closes the page in front,
   and on the list sends the app to the background
 - Downloads in `Download/MisterDownloadManager`, kept going by a foreground service whose
-  notification says how they go and has **Stop All**
+  notification says how they go and has **Stop All**; each download has its own notification
+  (a progress bar, its figures), and one that completes says so, with **Open**
 - Links in: Share (text with links), a file's link or a magnet opened with MDM, a `.torrent`
   opened or shared; files out: **Open**, **Open with...** and **Open folder** through Android's
   apps
@@ -53,9 +54,8 @@ code). A release build and its signing are the maintainer's.
 
 - Options' sections keep their desktop layout (a list of sections leads to them)
 - Downloads go on while the app runs in the background; if Android closes the app, they stop
-  where they were and go on at its next start (not at the phone's: Android doesn't let an app
-  open its screen by itself then)
-- A notification per download, and resuming after the phone restarts
+  where they were and go on at its next start
+- Resuming after the phone restarts (Android doesn't let an app open its screen by itself then)
 
 See [third_party/README.md](third_party/README.md) for where the files the build fetches come
 from.
