@@ -530,7 +530,9 @@ impl Scheduler {
         };
         // A phone: the window's five buttons big across the page, two by two.
         let big = phone.then(|| {
-            crate::app::phone::button_rects(o, 432.0 + DY, 651.0 - PHONE_SHIFT.x, 5, false).0
+            // From the page's edge: `o` here is the queue's page's, moved left by the shift.
+            let page = o + vec2(PHONE_SHIFT.x, 0.0);
+            crate::app::phone::button_rects(page, 432.0 + DY, 651.0 - PHONE_SHIFT.x, 5, false).0
         });
         let btn = |ui: &mut Ui, k: usize, label: &str, kind: ButtonKind| {
             let at = match &big {
