@@ -171,6 +171,24 @@ pub(crate) fn phone_buttons_extra(ctx: &egui::Context, rows: usize) -> f32 {
     }
 }
 
+/// A window's two buttons: big across its `width` from English y `top` on a phone ([`button_rects`]),
+/// the desktop's `a` and `b` elsewhere.
+pub(crate) fn pair_or(
+    ctx: &egui::Context,
+    o: Pos2,
+    top: f32,
+    width: f32,
+    a: egui::Rect,
+    b: egui::Rect,
+) -> (egui::Rect, egui::Rect) {
+    if active(ctx) {
+        let (r, _) = button_rects(o, top, width, 2, false);
+        (r[0], r[1])
+    } else {
+        (a, b)
+    }
+}
+
 /// The width a window lays itself out in: the phone's page's on a phone (its controls take the
 /// room it has), `desktop` elsewhere.
 pub(crate) fn layout_width(ctx: &egui::Context, desktop: f32) -> f32 {

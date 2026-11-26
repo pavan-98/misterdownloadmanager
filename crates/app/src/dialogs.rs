@@ -4674,7 +4674,10 @@ impl QueuePick {
             ctx,
             "queue-pick",
             "Download later",
-            [340.0, 110.0],
+            [
+                340.0,
+                110.0 + crate::app::phone::phone_buttons_extra(ctx, 1),
+            ],
             false,
             winui::LIGHT_BG(),
             |ui, o| {
@@ -4704,22 +4707,19 @@ impl QueuePick {
                     "Start the queue now",
                     true,
                 );
-                let ok = winui::button_light(
-                    ui,
+                // A phone: the two big across the page.
+                let (ok_at, cancel_at) = crate::app::phone::pair_or(
+                    ui.ctx(),
+                    o,
+                    78.0,
+                    340.0,
                     r(o, 174.0, 78.0, 73.0, 21.0),
-                    "OK",
-                    ButtonKind::Default,
-                    false,
-                )
-                .clicked();
-                let cancel = winui::button_light(
-                    ui,
                     r(o, 255.0, 78.0, 73.0, 21.0),
-                    "Cancel",
-                    ButtonKind::Normal,
-                    false,
-                )
-                .clicked();
+                );
+                let ok = winui::button_light(ui, ok_at, "OK", ButtonKind::Default, false).clicked();
+                let cancel =
+                    winui::button_light(ui, cancel_at, "Cancel", ButtonKind::Normal, false)
+                        .clicked();
                 if cancel || winui::escape_pressed(ui) {
                     Outcome::Closed
                 } else if ok || winui::enter_pressed(ui) {
@@ -4751,7 +4751,10 @@ impl Confirm {
             ctx,
             &key,
             self.title,
-            [400.0, 96.0 + extra],
+            [
+                400.0,
+                96.0 + extra + crate::app::phone::phone_buttons_extra(ctx, 1),
+            ],
             false,
             winui::BG(),
             |ui, o| {
@@ -4767,24 +4770,18 @@ impl Confirm {
                 );
                 grow_to(ui.ctx(), &key, lines, 3);
                 let o = o + vec2(0.0, extra);
-                let yes = winui::button(
-                    ui,
+                // A phone: the two big across the page.
+                let (yes_at, no_at) = crate::app::phone::pair_or(
+                    ui.ctx(),
+                    o,
+                    64.0,
+                    400.0,
                     r(o, 234.0, 64.0, 73.0, 21.0),
-                    "Yes",
-                    ButtonKind::Default,
-                    false,
-                    None,
-                )
-                .clicked();
-                let no = winui::button(
-                    ui,
                     r(o, 316.0, 64.0, 73.0, 21.0),
-                    "No",
-                    ButtonKind::Normal,
-                    false,
-                    None,
-                )
-                .clicked();
+                );
+                let yes =
+                    winui::button(ui, yes_at, "Yes", ButtonKind::Default, false, None).clicked();
+                let no = winui::button(ui, no_at, "No", ButtonKind::Normal, false, None).clicked();
                 if no || winui::escape_pressed(ui) {
                     Outcome::Closed
                 } else if yes || winui::enter_pressed(ui) {
@@ -4832,7 +4829,10 @@ impl DeleteCategory {
             ctx,
             key,
             "Delete category",
-            [500.0, 150.0 + extra],
+            [
+                500.0,
+                150.0 + extra + crate::app::phone::phone_buttons_extra(ctx, 1),
+            ],
             false,
             winui::LIGHT_BG(),
             |ui, o| {
@@ -4877,23 +4877,26 @@ impl DeleteCategory {
                 )[..] else {
                     unreachable!("two buttons")
                 };
-                // i18n: button: deletes the category
+                // A phone: the two big across the page.
+                let (delete_r, cancel_r) = crate::app::phone::pair_or(
+                    ui.ctx(),
+                    o,
+                    118.0,
+                    500.0,
+                    r(o, delete_at.0, 118.0, delete_at.1, 21.0),
+                    r(o, cancel_at.0, 118.0, cancel_at.1, 21.0),
+                );
                 let delete = winui::button_light(
                     ui,
-                    r(o, delete_at.0, 118.0, delete_at.1, 21.0),
+                    delete_r,
+                    // i18n: button: deletes the category
                     "Delete",
                     ButtonKind::Default,
                     false,
                 )
                 .clicked();
-                let cancel = winui::button_light(
-                    ui,
-                    r(o, cancel_at.0, 118.0, cancel_at.1, 21.0),
-                    "Cancel",
-                    ButtonKind::Normal,
-                    false,
-                )
-                .clicked();
+                let cancel = winui::button_light(ui, cancel_r, "Cancel", ButtonKind::Normal, false)
+                    .clicked();
                 if cancel || winui::escape_pressed(ui) {
                     Outcome::Closed
                 } else if delete || winui::enter_pressed(ui) {
@@ -5056,7 +5059,10 @@ impl ExistingFiles {
             ctx,
             "existing-files",
             "Files already there",
-            [460.0, 206.0],
+            [
+                460.0,
+                206.0 + crate::app::phone::phone_buttons_extra(ctx, 1),
+            ],
             false,
             winui::BG(),
             |ui, o| {
@@ -5117,25 +5123,19 @@ impl ExistingFiles {
                     right,
                     18.0,
                 );
-                let yes = winui::button(
-                    ui,
+                // A phone: the two big across the page.
+                let (yes_at, no_at) = crate::app::phone::pair_or(
+                    ui.ctx(),
+                    o,
+                    172.0,
+                    460.0,
                     r(o, 294.0, 172.0, 73.0, 21.0),
-                    "Yes",
-                    ButtonKind::Normal,
-                    false,
-                    None,
-                )
-                .clicked();
-                // No is the default: a file the user didn't mean to give up stays as it is.
-                let no = winui::button(
-                    ui,
                     r(o, 376.0, 172.0, 73.0, 21.0),
-                    "No",
-                    ButtonKind::Default,
-                    false,
-                    None,
-                )
-                .clicked();
+                );
+                let yes =
+                    winui::button(ui, yes_at, "Yes", ButtonKind::Normal, false, None).clicked();
+                // No is the default: a file the user didn't mean to give up stays as it is.
+                let no = winui::button(ui, no_at, "No", ButtonKind::Default, false, None).clicked();
                 if yes {
                     Outcome::Done(())
                 } else if no || winui::escape_pressed(ui) || winui::enter_pressed(ui) {
