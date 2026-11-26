@@ -46,6 +46,10 @@ pub trait Host: Send + Sync + 'static {
     /// storage) or `file` (a copy in the app's cache MDM can read); `dir`, where to start. None:
     /// cancelled, or a place MDM can't use.
     fn pick(&self, kind: &str, dir: Option<&str>) -> Option<String>;
+    /// The downloads' own notifications: `json` holds each running one (its name, how far, its
+    /// figures) and those just completed, with the words their notifications need (phone.rs
+    /// `Notice`, [`Notices`]).
+    fn downloads(&self, json: &str);
 }
 
 /// The clipboard's text ([`Host::clipboard`]), as lib.rs `clipboard_text` reads it elsewhere.
@@ -211,6 +215,7 @@ pub fn run(
                 typing: false,
                 told: Told::default(),
                 interrupted: take_interrupted(),
+                notices: Notices::default(),
             }))
         }),
     );
@@ -311,6 +316,51 @@ impl Told {
             h.status(&line, crate::i18n::tc("toolbar", "Stop All"));
         }
         self.line = Some(line);
+        self.at = Some(std::time::Instant::now());
+    }
+}
+
+/// The downloads' own notifications ([`Host::downloads`]), kept up to date: a notification
+/// for each running download, and a "Download complete" one with Open for each that completes
+/// while the app runs. Told at most once a second, and only when something changed.
+#[cfg(target_os = "android")]
+#[derive(Default)]
+struct Notices {
+    /// The running downloads last told.
+    running: Vec<crate::app::phone::Notice>,
+    at: Option<std::time::Instant>,
+}
+
+#[cfg(target_os = "android")]
+impl Notices {
+    fn tell(&mut self, app: &crate::app::App) {
+        if self
+            .at
+            .is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(1))
+        {
+            return;
+        }
+        let running = app.running_notices();
+        // Those running last time and not now that have completed.
+        let done: Vec<_> = self
+            .running
+            .iter()
+            .filter(|n| !running.iter().any(|r| r.id == n.id))
+            .filter_map(|n| app.completed_notice(n.id))
+            .collect();
+        if running == self.running && done.is_empty() {
+            return;
+        }
+        let words = serde_json::json!({
+            "running": running,
+            "done": done,
+            "complete": crate::i18n::t("Download complete"),
+            "open": crate::i18n::t("Open"),
+        });
+        if let Some(h) = host() {
+            h.downloads(&words.to_string());
+        }
+        self.running = running;
         self.at = Some(std::time::Instant::now());
     }
 }
@@ -449,6 +499,8 @@ struct OnAndroid {
     told: Told,
     /// The downloads running when the app last ended, to resume ([`take_interrupted`]).
     interrupted: Vec<u64>,
+    /// The downloads' own notifications.
+    notices: Notices,
 }
 
 /// The activity, for its soft keyboard's text (GameActivity's text input state).
@@ -471,6 +523,7 @@ impl eframe::App for OnAndroid {
             self.app.stop_all();
         }
         self.told.tell(self.app.activity());
+        self.notices.tell(&self.app);
         if self.told.line.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_secs(1));
         }
@@ -822,6 +875,12 @@ mod tests {
         }
         fn to_back(&self) -> bool {
             true
+        }
+        fn downloads(&self, json: &str) {
+            self.opened
+                .lock()
+                .unwrap()
+                .push(format!("downloads {json}"));
         }
         fn pick(&self, kind: &str, _dir: Option<&str>) -> Option<String> {
             Some(format!("/picked/{kind}"))

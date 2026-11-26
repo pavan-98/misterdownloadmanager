@@ -57,7 +57,7 @@ class DownloadService : Service() {
     private external fun nativeStopAll()
 
     companion object {
-        private const val CHANNEL = "downloads"
+        const val CHANNEL = "downloads"
         private const val ONGOING_ID = 1
         private const val EXTRA_TEXT = "text"
         private const val ACTION_STOP_ALL = "com.misterdownloadmanager.android.STOP_ALL"

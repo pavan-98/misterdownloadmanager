@@ -1194,7 +1194,7 @@
 #. window title in gallerydlg.rs
 #. window title: download an image gallery's files (gallery-dl)
 	Download a gallery	Download a gallery
-#. window title in a dialog box; text in a dialog box; text in the Options window
+#. text in android.rs; window title in a dialog box; text in a dialog box; text in the Options window
 	Download complete	Download complete
 #. text in the Options window
 #. Options, Downloads, under "Show download complete dialog": snoozed with "Until MDM restarts"
@@ -2877,7 +2877,7 @@
 	Only the {files} file(s) ticked in Add torrent	Only the {files} file(s) ticked in Add torrent
 #. checkbox in a dialog box
 	Only while I'm using the computer	Only while I'm using the computer
-#. button in a dialog box; text in a dialog box; button in a download's Properties window; button in torrentfiles.rs
+#. text in android.rs; button in a dialog box; text in a dialog box; button in a download's Properties window; button in torrentfiles.rs
 #. verb: opens the downloaded file
 #. title of the message when a downloaded file can't be opened
 #. verb: opens the file

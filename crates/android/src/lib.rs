@@ -268,6 +268,12 @@ impl mdm_app::android::Host for JavaHost {
         self.call("toBack", [None; 4]).is_ok()
     }
 
+    fn downloads(&self, json: &str) {
+        if let Err(e) = self.call("downloads", [Some(json), None, None, None]) {
+            log::warn!("the downloads' notifications: {e}");
+        }
+    }
+
     fn pick(&self, kind: &str, dir: Option<&str>) -> Option<String> {
         match self.call("pick", [Some(kind), dir, None, None]) {
             Ok(path) => path,

@@ -90,6 +90,10 @@ object Platform {
                 "err:the locks were refused"
             }
             "clipboard" -> clipboard(a.orEmpty(), b)
+            "downloads" -> {
+                Downloads.update(app, a.orEmpty())
+                "ok:"
+            }
             "pick" -> activity.get()?.let { Picker.pick(it, a.orEmpty()) }?.let { "ok:$it" } ?: "none"
             "status" -> {
                 DownloadService.status(app, a.orEmpty(), b.orEmpty())
@@ -250,19 +254,28 @@ object Locks {
  * view to give a file to). Files go as content: addresses (the manifest's FileProvider).
  */
 object Opener {
+    /** The intent that views the file at `path` with the app set for its type (its content: address). */
+    fun viewIntent(context: Context, path: String): Intent? = try {
+        val file = File(path)
+        val uri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
+        val type = MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(file.extension.lowercase())
+            ?: "application/octet-stream"
+        Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, type)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    } catch (e: IllegalArgumentException) {
+        // Outside the folders the FileProvider serves.
+        null
+    }
+
     fun open(context: Context, kind: String, target: String) {
         val intent = when (kind) {
             "url" -> Intent(Intent.ACTION_VIEW, Uri.parse(target))
             "folder" -> Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)
             "view", "chooser" -> {
-                val file = File(target)
-                val uri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
-                val type = MimeTypeMap.getSingleton()
-                    .getMimeTypeFromExtension(file.extension.lowercase())
-                    ?: "application/octet-stream"
-                val view = Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(uri, type)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val view = viewIntent(context, target)
+                    ?: throw IllegalStateException("no app on this phone opens it")
                 if (kind == "chooser") Intent.createChooser(view, null) else view
             }
             else -> throw IllegalArgumentException("unknown kind $kind")

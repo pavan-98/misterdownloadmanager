@@ -834,3 +834,65 @@ fn menu_row(
         p.line_segment([c, c + egui::vec2(-4.0 * dir, 6.0)], stroke);
     }
 }
+
+/// A download as a phone's notification shows it (android.rs `Notices`): running, with how far
+/// it is and its figures, or just completed.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct Notice {
+    pub id: u64,
+    pub name: String,
+    /// How far it is (0 to 100), when its size is known.
+    pub percent: Option<u8>,
+    /// Its figures as the list says them: "45% · 1.25 MB/sec · 2 min".
+    pub line: String,
+    /// The file, for a completed one's Open.
+    pub path: String,
+}
+
+impl App {
+    /// The downloads running now, for their notifications (android.rs).
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(crate) fn running_notices(&self) -> Vec<Notice> {
+        self.items
+            .iter()
+            .filter(|i| i.live.is_some())
+            .map(|i| {
+                let frac = i.fraction();
+                let mut parts = Vec::new();
+                if let Some(f) = frac {
+                    parts.push(crate::i18n::percent(f, 0));
+                }
+                let rate = i.rate();
+                if rate > 0.0 {
+                    parts.push(model::rate(rate));
+                }
+                let left = i.time_left();
+                if !left.is_empty() {
+                    parts.push(left);
+                }
+                Notice {
+                    id: i.id,
+                    name: i.file_name.clone(),
+                    percent: frac.map(|f| (f * 100.0).clamp(0.0, 100.0) as u8),
+                    line: parts.join("  ·  "),
+                    path: i.dest.display().to_string(),
+                }
+            })
+            .collect()
+    }
+
+    /// Download `id`, when it has completed: for its "Download complete" notification.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(crate) fn completed_notice(&self, id: u64) -> Option<Notice> {
+        self.items
+            .iter()
+            .find(|i| i.id == id && i.status == Status::Complete)
+            .map(|i| Notice {
+                id: i.id,
+                name: i.file_name.clone(),
+                percent: Some(100),
+                line: model::size3(i.size.unwrap_or(i.downloaded)),
+                path: i.dest.display().to_string(),
+            })
+    }
+}
