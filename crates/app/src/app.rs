@@ -10852,6 +10852,14 @@ impl App {
             // i18n: noun: opens the download's Properties window
             I("Properties", Cmd::Properties, sel, false),
         ];
+        // A phone (phone.rs) has no double click: a tap opens a download.
+        if crate::app::phone::active(&self.ui_ctx)
+            && let Some(k) = entries
+                .iter()
+                .position(|e| matches!(e, Sub("On Double click", ..)))
+        {
+            entries.drain(k - 1..=k);
+        }
         // A torrent's own actions (#39), after Verify checksum.
         if let Some((i, spec)) = torrent {
             let busy = self.torrent_host.busy(&spec.hash);

@@ -904,7 +904,10 @@ impl About {
             ctx,
             "about",
             "About Mister Download Manager",
-            [420.0, 236.0 + extra],
+            [
+                420.0,
+                236.0 + extra + crate::app::phone::phone_buttons_extra(ctx, 1),
+            ],
             false,
             winui::BG(),
             |ui, o| {
@@ -1028,15 +1031,12 @@ impl About {
                 }
                 // The last row ends above OK (at 204 when it fits as planned).
                 crate::dialogs::grow_px(ui.ctx(), "about", y + 12.0 - (o.y + 194.0));
-                let ok = winui::button(
-                    ui,
-                    r(o, 336.0, 204.0 + extra, 73.0, 21.0),
-                    "OK",
-                    ButtonKind::Default,
-                    false,
-                    None,
-                )
-                .clicked();
+                let ok_at = if crate::app::phone::active(ui.ctx()) {
+                    crate::app::phone::button_rects(o, 204.0 + extra, 420.0, 1, true).0[0]
+                } else {
+                    r(o, 336.0, 204.0 + extra, 73.0, 21.0)
+                };
+                let ok = winui::button(ui, ok_at, "OK", ButtonKind::Default, false, None).clicked();
                 if ok || winui::escape_pressed(ui) || winui::enter_pressed(ui) {
                     Outcome::Closed
                 } else {
