@@ -480,8 +480,8 @@ pub fn key_label(spec: &'static str) -> String {
 }
 
 /// A menu label without the shortcut IDM writes into some labels ("Find (Ctrl-F)"), when the
-/// menu shows the shortcut in its own column.
-fn without_shortcut(text: &str) -> &str {
+/// menu shows the shortcut in its own column, or on a phone (phone.rs), which has no keys for it.
+pub(crate) fn without_shortcut(text: &str) -> &str {
     let t = text.trim_end();
     if let Some(open) = t.rfind(" (")
         && t.ends_with(')')

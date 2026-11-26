@@ -769,9 +769,10 @@ fn menu_sheet<C: Clone>(
     result
 }
 
-/// A menu's label in the interface language, without its access letter's `&`.
+/// A menu's label in the interface language, without its access letter's `&` or the keyboard
+/// shortcut some labels carry ("Move/Rename (Ctrl-M)"): a phone has no keyboard for it.
 fn menu_label(label: &str) -> String {
-    chrome::plain(crate::i18n::tc("menu", label)).0
+    chrome::without_shortcut(&chrome::plain(crate::i18n::tc("menu", label)).0).to_owned()
 }
 
 /// One row of [`menu_sheet`] at `at` (screen): its label, a check mark when checked, an arrow
