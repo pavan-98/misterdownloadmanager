@@ -191,9 +191,6 @@
 #. text in the Scheduler window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 	&Start now	&Start now
-#. text in android.rs
-#. & marks the keyboard shortcut letter: keep one & before a letter of the translation
-	&Stop All	&Stop All
 #. text in the Options window
 #. under Download panels site exclusions list
 	(separate by spaces; * matches anything)	(separate by spaces; * matches anything)
@@ -6625,7 +6622,7 @@ toolbar	Start Queue	Start Queue
 #. toolbar button in the main window; toolbar button in phone.rs
 #. verb: stop the selected downloads
 toolbar	Stop	Stop
-#. toolbar button in the main window
+#. toolbar button in android.rs; toolbar button in the main window
 toolbar	Stop All	Stop All
 #. toolbar button in the main window
 toolbar	Stop Queue	Stop Queue

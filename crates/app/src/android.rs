@@ -307,8 +307,8 @@ impl Told {
             return;
         }
         if let Some(h) = host() {
-            let (stop, _) = crate::chrome::plain(crate::i18n::t("&Stop All"));
-            h.status(&line, &stop);
+            // The toolbar's Stop All, translated as it is there.
+            h.status(&line, crate::i18n::tc("toolbar", "Stop All"));
         }
         self.line = Some(line);
         self.at = Some(std::time::Instant::now());
