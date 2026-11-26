@@ -195,6 +195,7 @@ pub fn run(
                 typed: String::new(),
                 typing: false,
                 told: Told::default(),
+                interrupted: take_interrupted(),
             }))
         }),
     );
@@ -211,6 +212,49 @@ static CONTEXT: OnceLock<egui::Context> = OnceLock::new();
 /// Back gestures and Back presses Java has seen since the last frame ([`back_pressed`]).
 #[cfg(target_os = "android")]
 static BACKS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// The downloads that were running when the app ended, saved beside the list (`resume.json`):
+/// Android ends the app itself (the activity closed, the app swiped away, the process killed),
+/// and what was downloading goes on at the next start ([`take_interrupted`]).
+#[cfg(target_os = "android")]
+pub fn note_interrupted(ids: &[u64]) {
+    if ids.is_empty() {
+        return;
+    }
+    let Some(path) = mdm_ipc::data_dir().map(|d| d.join("resume.json")) else {
+        return;
+    };
+    let mut all = read_interrupted(&path);
+    for id in ids {
+        if !all.contains(id) {
+            all.push(*id);
+        }
+    }
+    if let Ok(text) = serde_json::to_string(&all)
+        && let Err(e) = std::fs::write(&path, text)
+    {
+        tracing::warn!("{}: {e}", path.display());
+    }
+}
+
+#[cfg(target_os = "android")]
+fn read_interrupted(path: &std::path::Path) -> Vec<u64> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+/// [`note_interrupted`]'s downloads, once: the file goes.
+#[cfg(target_os = "android")]
+fn take_interrupted() -> Vec<u64> {
+    let Some(path) = mdm_ipc::data_dir().map(|d| d.join("resume.json")) else {
+        return Vec::new();
+    };
+    let ids = read_interrupted(&path);
+    let _ = std::fs::remove_file(&path);
+    ids
+}
 
 /// The notification's Stop All was tapped (`DownloadService`); the next frame stops them.
 #[cfg(target_os = "android")]
@@ -388,6 +432,8 @@ struct OnAndroid {
     typing: bool,
     /// What the downloads' notification says.
     told: Told,
+    /// The downloads running when the app last ended, to resume ([`take_interrupted`]).
+    interrupted: Vec<u64>,
 }
 
 /// The activity, for its soft keyboard's text (GameActivity's text input state).
@@ -399,6 +445,11 @@ static ACTIVITY: OnceLock<egui_winit::winit::platform::android::activity::Androi
 impl eframe::App for OnAndroid {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         eframe::App::logic(&mut self.app, ctx, frame);
+        // What was downloading when the app last ended goes on.
+        if !self.interrupted.is_empty() {
+            let ids = std::mem::take(&mut self.interrupted);
+            self.app.resume_interrupted(&ids);
+        }
         // The notification's Stop All, and what the notification says.
         if STOP_ALL.swap(false, std::sync::atomic::Ordering::Relaxed) {
             tracing::info!("the notification's Stop All");

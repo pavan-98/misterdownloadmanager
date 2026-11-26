@@ -158,6 +158,14 @@ adb shell am start -W -a android.intent.action.VIEW -t application/x-bittorrent 
 shot 10j-torrent
 adb shell input keyevent KEYCODE_BACK
 sleep 2
+# A slow download running when Android destroys the activity below: it goes on after the reopen.
+adb shell am start -W -a android.intent.action.SEND -t text/plain \
+  --es android.intent.extra.TEXT "'http://10.0.2.2:8090/gen/50M/resumeme.bin?rate=100K'" \
+  -n "$pkg/com.misterdownloadmanager.android.MainActivity"
+sleep 4
+adb shell input keyevent KEYCODE_ENTER
+sleep 6
+shot 10k-before-destroy
 # The activity destroyed as the system may destroy it ("Don't keep activities"), then opened
 # again: the app closes (saving its list) and starts again in the same process.
 adb shell settings put global always_finish_activities 1

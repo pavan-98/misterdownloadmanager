@@ -14938,6 +14938,10 @@ impl App {
         let began = Instant::now();
         // The longest first: the downloads save while the rest is done.
         let stopping = self.stop_for_the_end();
+        // Android ends the app itself (the activity closed, the app swiped away): what was
+        // downloading goes on at the next start.
+        #[cfg(target_os = "android")]
+        crate::android::note_interrupted(&stopping);
         // yt-dlp, gallery-dl and all they started end, and none starts any more (#1301: on
         // Linux and macOS nothing else ends them with MDM).
         mdm_tools::proc::end_all();
@@ -15023,6 +15027,18 @@ impl App {
     /// which flushes what they received and saves their resume state; their ids. Torrents keep
     /// their own resume data as they go, and a video's or a gallery's helpers end with MDM
     /// (`mdm_tools::proc::end_all`).
+    /// Android: the downloads that were running when the app last ended (android.rs
+    /// `take_interrupted`) start again (a start reads its own resume state, as Resume's does).
+    #[cfg(target_os = "android")]
+    pub(crate) fn resume_interrupted(&mut self, ids: &[u64]) {
+        for &id in ids {
+            if self.items.iter().any(|i| i.id == id && i.can_start()) {
+                tracing::info!("download {id}: running when the app last ended, resumed");
+                self.start(id, true);
+            }
+        }
+    }
+
     fn stop_for_the_end(&self) -> Vec<u64> {
         self.items
             .iter()
