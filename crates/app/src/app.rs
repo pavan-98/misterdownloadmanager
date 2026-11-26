@@ -12372,7 +12372,8 @@ impl App {
     /// Tasks → Show drop target: the box while it's on; what is dropped on it is added as if
     /// given on the command line (an address, a magnet link, a .torrent file).
     fn drop_target(&mut self, ctx: &egui::Context) {
-        if !self.settings.drop_target {
+        // A phone has no desktop to float it over (phone.rs; nor is it offered there).
+        if !self.settings.drop_target || phone::active(ctx) {
             self.drop_target = None;
             return;
         }
