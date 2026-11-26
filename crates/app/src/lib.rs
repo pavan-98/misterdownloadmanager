@@ -618,10 +618,15 @@ fn app() -> eframe::Result {
         .filter(|[x, y, w, h]| *w >= 600 && *h >= 300 && on_a_screen(x + 40, y + 10));
     let size = saved.map_or([930.0 * z, 470.0 * z], |[_, _, w, h]| [w as f32, h as f32]);
     // MDM_PHONE=1 (phone.rs): a phone's screen (a Pixel's 412 × 892 points), to look at the
-    // phone's layout on a desktop.
-    let phone = std::env::var_os("MDM_PHONE").is_some();
+    // phone's layout on a desktop; MDM_PHONE=360, a phone that many points wide.
+    let phone_var = std::env::var("MDM_PHONE").ok();
+    let phone = phone_var.is_some();
+    let phone_w = phone_var
+        .and_then(|v| v.parse::<f32>().ok())
+        .filter(|w| (320.0..600.0).contains(w))
+        .unwrap_or(412.0);
     let (size, min) = if phone {
-        ([412.0 * z, 892.0 * z], [320.0 * z, 480.0 * z])
+        ([phone_w * z, 892.0 * z], [320.0 * z, 480.0 * z])
     } else {
         (size, [600.0 * z, 300.0 * z])
     };
