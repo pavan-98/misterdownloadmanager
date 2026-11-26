@@ -14,7 +14,9 @@ pub const PHONE_WIDTH: f32 = 600.0;
 /// The top and bottom bars' height: Android's 48 dp touch target and its margin.
 const BAR_H: f32 = 56.0;
 /// A row of the list: two lines of text and a progress bar, with room for a finger.
-const ROW_H: f32 = 72.0;
+const ROW_H: f32 = 80.0;
+/// The home screen's summary and its views' chips, under the top bar ([`App::home_header`]).
+const HEADER_H: f32 = 116.0;
 /// The space around the bars' and rows' contents.
 const PAD: f32 = 16.0;
 
@@ -279,8 +281,18 @@ impl App {
 
         let top = egui::Rect::from_min_size(full.min, egui::vec2(full.width(), BAR_H));
         let bottom = egui::Rect::from_min_max(pos2(full.min.x, full.max.y - BAR_H), full.max);
-        let body =
-            egui::Rect::from_min_max(pos2(full.min.x, top.max.y), pos2(full.max.x, bottom.min.y));
+        // Under the top bar: how the downloads go, and the views at a tap ([`App::home_header`]).
+        let header = egui::Rect::from_min_size(
+            pos2(full.min.x, top.max.y),
+            egui::vec2(full.width(), HEADER_H),
+        );
+        let body = egui::Rect::from_min_max(
+            pos2(full.min.x, header.max.y),
+            pos2(full.max.x, bottom.min.y),
+        );
+        if let Some(view) = self.home_header(ui, header) {
+            self.view = view;
+        }
 
         // The list.
         let (ids, rows) = self.list_rows();
@@ -413,7 +425,8 @@ impl App {
         if picking && bar_button(ui, all_at, "phone-select-all", Glyph::SelectAll) {
             self.selection.apply(crate::selection::Pick::All, &ids);
         }
-        if bar_button(ui, more_at, "phone-more", Glyph::More) {
+        // ⋮ in selection mode only: the rest of the commands are at the drawer's bottom.
+        if picking && bar_button(ui, more_at, "phone-more", Glyph::More) {
             let at = winui::rect(more_at).left_bottom();
             // In selection mode, the picked downloads' menu (Open, Move, Properties...).
             // (A picked download's menu acts on every one picked.)
@@ -500,13 +513,29 @@ impl App {
             }
         }
 
-        // The categories, as a drawer over the list.
-        if ctx
+        // The drawer over the list: drawn while it slides in and out.
+        let drawer_open = ctx
             .data(|d| d.get_temp::<bool>(drawer_id()))
-            .unwrap_or(false)
-            && let Some(view) = self.drawer(ui, full)
-        {
-            self.view = view;
+            .unwrap_or(false);
+        let slide = ctx.animate_bool_with_time(drawer_id().with("slide"), drawer_open, 0.22);
+        if slide > 0.0 {
+            let shown = 1.0 - (1.0 - slide).powi(3);
+            let (view, cmd, sub) = self.drawer(ui, full, shown, drawer_open);
+            if let Some(view) = view {
+                self.view = view;
+            }
+            if let Some(cmd) = cmd {
+                chosen = Some((cmd, None));
+            }
+            // A submenu (Start queue, Stop queue): the menu sheet, open on it.
+            if let Some(k) = sub {
+                self.open_popup_asked(Popup::PhoneMore, full.center(), &ctx);
+                if let Some((_, _, serial)) = self.popup {
+                    ctx.data_mut(|d| {
+                        d.insert_temp(egui::Id::unique(("phone-menu-path", serial)), vec![k]);
+                    });
+                }
+            }
         }
 
         // A row's menu, the "more" menu, a node's: the desktop's entries, in a sheet from the
@@ -525,6 +554,156 @@ impl App {
         if let Some((c, target)) = chosen {
             self.run(c, target, &ctx);
         }
+    }
+
+    /// Under the top bar, at English `at`: a card of how the downloads go (their speed together,
+    /// how many run and how far they are, as the desktop's status bar and tray tip say it; or
+    /// how many there are), then chips for All, Unfinished and Finished with their counts. The
+    /// view a chip asks for.
+    fn home_header(&mut self, ui: &mut Ui, at: egui::Rect) -> Option<View> {
+        let live: Vec<&Item> = self.items.iter().filter(|i| i.live.is_some()).collect();
+        let speed: f64 = live.iter().map(|i| i.rate()).sum();
+        let (got, of) = live
+            .iter()
+            .filter_map(|i| i.size.map(|s| (i.downloaded, s)))
+            .fold((0u64, 0u64), |(a, b), (d, s)| (a + d, b + s));
+        let card = egui::Rect::from_min_size(
+            pos2(at.min.x + 12.0, at.min.y + 10.0),
+            egui::vec2(at.width() - 24.0, 58.0),
+        );
+        let screen = winui::rect(card);
+        ui.painter()
+            .rect_filled(screen, 14.0, colors().accent.gamma_multiply(0.10));
+        let (big, small) = if live.is_empty() {
+            (
+                crate::i18n::tn(self.items.len() as u64, "{n} download", "{n} downloads"),
+                None,
+            )
+        } else {
+            (
+                model::rate(speed),
+                Some(crate::i18n::tn(
+                    live.len() as u64,
+                    "{n} downloading",
+                    "{n} downloading",
+                )),
+            )
+        };
+        let big_y = if small.is_some() { 22.0 } else { 29.0 };
+        lead_text(
+            ui,
+            pos2(card.min.x + 16.0, card.min.y + big_y),
+            &big,
+            font_bold(20.0),
+            colors().text,
+        );
+        if let Some(small) = small {
+            lead_text(
+                ui,
+                pos2(card.min.x + 16.0, card.min.y + 44.0),
+                &small,
+                font(13.0),
+                colors().muted,
+            );
+        }
+        // How far the running ones are together: a ring with its percent.
+        if of > 0 && !live.is_empty() {
+            let frac = (got as f64 / of as f64).clamp(0.0, 1.0);
+            let shown =
+                ui.ctx()
+                    .animate_value_with_time(egui::Id::unique("phone-ring"), frac as f32, 0.35);
+            let c = winui::rect(egui::Rect::from_center_size(
+                pos2(card.max.x - 36.0, card.center().y),
+                egui::vec2(40.0, 40.0),
+            ))
+            .center();
+            ring(ui, c, 19.0, shown);
+            ui.painter().text(
+                c,
+                egui::Align2::CENTER_CENTER,
+                crate::i18n::percent(frac, 0),
+                font_bold(11.0),
+                colors().text,
+            );
+        }
+        // The views: All, Unfinished, Finished, with how many each has.
+        let finished = self
+            .items
+            .iter()
+            .filter(|i| i.status == model::Status::Complete)
+            .count();
+        let counts = [
+            ("All Downloads", self.items.len()),
+            ("Unfinished", self.items.len() - finished),
+            ("Finished", finished),
+        ];
+        let rows = self.tree_rows();
+        let mut x = at.min.x + 12.0;
+        let y = card.max.y + 10.0;
+        let mut picked = None;
+        for (label, n) in counts {
+            let Some((row, Some(view), _)) = rows.iter().find(|(r, ..)| r.label == label) else {
+                continue;
+            };
+            // "All Downloads" is "All" on its chip: the top bar names the view.
+            let name = if label == "All Downloads" {
+                crate::i18n::t("All")
+            } else {
+                crate::i18n::t(label)
+            };
+            let text = format!("{name}  {}", crate::i18n::integer(n as u64));
+            let w = ui
+                .painter()
+                .layout_no_wrap(text.clone(), font(14.0), colors().text)
+                .size()
+                .x
+                + 28.0;
+            let chip = egui::Rect::from_min_size(pos2(x, y), egui::vec2(w, 34.0));
+            let cs = winui::rect(chip);
+            let r = ui.interact(
+                cs,
+                egui::Id::unique(("phone-chip", label)),
+                egui::Sense::click(),
+            );
+            let on = row.selected;
+            let fill = ui.ctx().animate_bool_with_time(r.id.with("on"), on, 0.15);
+            ui.painter()
+                .rect_filled(cs, 17.0, colors().selection_inactive.gamma_multiply(fill));
+            ui.painter().rect_stroke(
+                cs,
+                17.0,
+                egui::Stroke::new(
+                    1.0,
+                    if on {
+                        colors().selection
+                    } else {
+                        colors().menu_sep
+                    },
+                ),
+                egui::StrokeKind::Inside,
+            );
+            if r.is_pointer_button_down_on() {
+                ui.painter().rect_filled(cs, 17.0, colors().row_pressed);
+            }
+            ui.painter().text(
+                cs.center(),
+                egui::Align2::CENTER_CENTER,
+                &text,
+                font(14.0),
+                colors().text,
+            );
+            winui::expose(&r, egui::Role::Button, &text, true, None);
+            if r.clicked() && !on {
+                picked = Some(*view);
+            }
+            x += w + 8.0;
+        }
+        ui.painter().hline(
+            winui::rect(at).x_range(),
+            at.max.y - 0.5,
+            egui::Stroke::new(1.0, colors().list_grid),
+        );
+        picked
     }
 
     /// Whether the drawer, a menu sheet or selection mode is over the list (Back closes it).
@@ -550,92 +729,179 @@ impl App {
             )
     }
 
-    /// The categories and queues over the list, from the leading side; a tap on one shows it
-    /// and closes the drawer, as a tap outside it or Back does. Returns the view chosen.
-    fn drawer(&mut self, ui: &mut Ui, full: egui::Rect) -> Option<View> {
+    /// The drawer, from the leading side: the app's name, the categories and queues, then the
+    /// rest of the commands (the desktop's menus' a phone has: what the ⋮ menu had). A tap on a
+    /// view shows it, on a command runs it, on a submenu opens it in the menu sheet; each, a tap
+    /// outside it or Back closes the drawer. `shown`: how far it is in (0 to 1) as it opens and
+    /// closes; `open`: whether it takes touches (not while it slides out).
+    fn drawer(
+        &mut self,
+        ui: &mut Ui,
+        full: egui::Rect,
+        shown: f32,
+        open: bool,
+    ) -> (Option<View>, Option<Cmd>, Option<usize>) {
         let ctx = ui.ctx().clone();
-        // Closed, a frame without it at once (as the menu sheet's, [`menu_sheet`]).
         let close = || {
             ctx.data_mut(|d| d.insert_temp(drawer_id(), false));
             ctx.request_repaint();
         };
         let width = (full.width() - BAR_H).min(320.0);
-        // Opening, it slides in from the leading side as the rest dims.
-        let shown = entrance(&ctx, drawer_id(), 0.22);
         let pane = egui::Rect::from_min_size(
             pos2(full.min.x - width * (1.0 - shown), full.min.y),
             egui::vec2(width, full.height()),
         );
         // The rest of the window, dimmed: a tap there closes the drawer.
-        let scrim = ui.interact(full, egui::Id::unique("phone-scrim"), egui::Sense::click());
+        let scrim =
+            open.then(|| ui.interact(full, egui::Id::unique("phone-scrim"), egui::Sense::click()));
         ui.painter().rect_filled(
             full,
             0.0,
             egui::Color32::from_black_alpha((110.0 * shown) as u8),
         );
-        let mut view = None;
         let pane_screen = winui::rect(pane);
         ui.painter().rect_filled(pane_screen, 0.0, colors().tree);
+        let mut view = None;
+        let mut cmd = None;
+        let mut sub = None;
         let rows = self.tree_rows();
-        let mut y = pane.min.y + 8.0;
-        let mut on_pane = false;
-        for (k, (row, node, branch)) in rows.iter().enumerate() {
-            let at = egui::Rect::from_min_size(pos2(pane.min.x, y), egui::vec2(width, 48.0));
-            y += 48.0;
-            let r = ui.interact(
-                winui::rect(at),
-                egui::Id::unique(("phone-node", k)),
-                egui::Sense::click(),
-            );
-            on_pane |= r.hovered();
-            if row.selected {
-                ui.painter().rect_filled(
-                    winui::rect(at.shrink2(egui::vec2(8.0, 2.0))),
-                    8.0,
-                    colors().selection_inactive,
+        let entries = self.phone_more_entries();
+        let sense = if open {
+            egui::Sense::click()
+        } else {
+            egui::Sense::hover()
+        };
+        let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(pane_screen));
+        inner.set_clip_rect(pane_screen.intersect(ui.clip_rect()));
+        let icons = &mut self.icons;
+        let mut toggled = None;
+        let mut node_menu = None;
+        egui::ScrollArea::vertical()
+            .id_salt("phone-drawer")
+            .auto_shrink([false, false])
+            .show(&mut inner, |ui| {
+                let w = pane_screen.width();
+                // The header: the app's icon and name.
+                let (h, _) = ui.allocate_exact_size(egui::vec2(w, 72.0), egui::Sense::hover());
+                let at = winui::rect(h);
+                egui::Image::from_bytes(
+                    "bytes://mdm-48.png",
+                    include_bytes!("../assets/icons/app/mdm-48.png"),
+                )
+                .paint_at(
+                    ui,
+                    winui::rect(egui::Rect::from_min_size(
+                        pos2(at.min.x + PAD, at.min.y + 16.0),
+                        egui::vec2(40.0, 40.0),
+                    )),
                 );
-            }
-            let indent = PAD + 20.0 * row.level as f32;
-            self.icons.paint(
-                ui,
-                row.icon.clone(),
-                // An English point: the painter places it (right to left, from the right).
-                pos2(at.min.x + indent, at.center().y - 8.0),
-            );
-            let label = crate::i18n::t(&row.label);
-            ui.painter().text(
-                winui::rect(egui::Rect::from_min_size(
-                    pos2(at.min.x + indent + 28.0, at.center().y),
-                    egui::Vec2::ZERO,
-                ))
-                .min,
-                if winui::rtl() {
-                    egui::Align2::RIGHT_CENTER
-                } else {
-                    egui::Align2::LEFT_CENTER
-                },
-                label,
-                font(16.0),
-                colors().text,
-            );
-            if r.clicked() {
-                match node {
-                    Some(v) => {
-                        view = Some(*v);
-                        close();
+                lead_text(
+                    ui,
+                    pos2(at.min.x + PAD + 52.0, at.center().y),
+                    crate::i18n::t("Mister Download Manager"),
+                    font_bold(16.0),
+                    colors().text,
+                );
+                ui.painter().hline(
+                    h.x_range(),
+                    h.max.y - 0.5,
+                    egui::Stroke::new(1.0, colors().menu_sep),
+                );
+                ui.add_space(8.0);
+                // The categories and queues.
+                for (row, node, branch) in &rows {
+                    let (screen, r) = ui.allocate_exact_size(egui::vec2(w, 48.0), sense);
+                    let at = winui::rect(screen);
+                    if row.selected {
+                        ui.painter().rect_filled(
+                            screen.shrink2(egui::vec2(8.0, 2.0)),
+                            24.0,
+                            colors().selection_inactive,
+                        );
+                    } else if r.is_pointer_button_down_on() {
+                        ui.painter().rect_filled(
+                            screen.shrink2(egui::vec2(8.0, 2.0)),
+                            24.0,
+                            colors().row_pressed,
+                        );
                     }
-                    None => self.toggle(*branch),
+                    let indent = PAD + 20.0 * row.level as f32;
+                    // An English point: the painter places it (right to left, from the right).
+                    icons.paint(
+                        ui,
+                        row.icon.clone(),
+                        pos2(at.min.x + indent, at.center().y - 8.0),
+                    );
+                    lead_text(
+                        ui,
+                        pos2(at.min.x + indent + 28.0, at.center().y),
+                        crate::i18n::t(&row.label),
+                        font(16.0),
+                        colors().text,
+                    );
+                    if r.clicked() {
+                        match node {
+                            Some(v) => view = Some(*v),
+                            None => toggled = Some(*branch),
+                        }
+                    }
+                    if r.secondary_clicked() || held_long(ui, &r) {
+                        let p = r.interact_pointer_pos().unwrap_or(r.rect.center());
+                        if node.is_some() || *branch == Branch::Queues {
+                            node_menu = Some((*node, p));
+                        }
+                    }
                 }
-            }
-            if r.secondary_clicked() || r.long_touched() {
-                let at = r.interact_pointer_pos().unwrap_or(r.rect.center());
-                if node.is_some() || *branch == Branch::Queues {
-                    self.open_popup_asked(Popup::Node(*node), at, &ctx);
+                ui.add_space(4.0);
+                let (sep, _) = ui.allocate_exact_size(egui::vec2(w, 9.0), egui::Sense::hover());
+                ui.painter().hline(
+                    sep.shrink2(egui::vec2(PAD, 0.0)).x_range(),
+                    sep.center().y,
+                    egui::Stroke::new(1.0, colors().menu_sep),
+                );
+                // The rest of the commands.
+                for (k, e) in entries.iter().enumerate() {
+                    let (label, enabled, has_sub) = match e {
+                        MenuEntry::Sep => {
+                            let (sep, _) =
+                                ui.allocate_exact_size(egui::vec2(w, 9.0), egui::Sense::hover());
+                            ui.painter().hline(
+                                sep.shrink2(egui::vec2(PAD, 0.0)).x_range(),
+                                sep.center().y,
+                                egui::Stroke::new(1.0, colors().menu_sep),
+                            );
+                            continue;
+                        }
+                        MenuEntry::Item(l, _, en, _) | MenuEntry::Radio(l, _, en, _) => {
+                            (*l, *en, false)
+                        }
+                        MenuEntry::Sub(l, en, _) => (*l, *en, true),
+                    };
+                    let (screen, r) = ui.allocate_exact_size(
+                        egui::vec2(w, MENU_ROW_H),
+                        if enabled { sense } else { egui::Sense::hover() },
+                    );
+                    menu_row(ui, screen, &menu_label(label), enabled, false, has_sub, &r);
+                    if enabled && r.clicked() {
+                        match e {
+                            MenuEntry::Item(_, c, ..) | MenuEntry::Radio(_, c, ..) => {
+                                cmd = Some(*c);
+                            }
+                            MenuEntry::Sub(..) => sub = Some(k),
+                            MenuEntry::Sep => {}
+                        }
+                    }
                 }
-            }
+                ui.add_space(8.0);
+            });
+        if let Some(b) = toggled {
+            self.toggle(b);
         }
-        if scrim.clicked()
-            && !on_pane
+        if let Some((node, p)) = node_menu {
+            self.open_popup_asked(Popup::Node(node), p, &ctx);
+        }
+        if let Some(scrim) = scrim
+            && scrim.clicked()
             && !scrim
                 .interact_pointer_pos()
                 .is_some_and(|p| pane_screen.contains(p))
@@ -643,10 +909,13 @@ impl App {
             close();
         }
         // Back closes it first (Esc on the desktop's keys).
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+        if open && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
             close();
         }
-        view
+        if view.is_some() || cmd.is_some() || sub.is_some() {
+            close();
+        }
+        (view, cmd, sub)
     }
 }
 
@@ -655,7 +924,7 @@ impl App {
 struct ListTouch {
     /// A row tapped: its index, and whether it was held (a long press).
     tapped: Option<(usize, bool)>,
-    /// A row's menu asked for (a right-click, in the desktop's preview), where.
+    /// A row's menu asked for (its ⋮, a right-click in the desktop's preview), where.
     menu: Option<(usize, Pos2)>,
     /// A row's own button tapped: true for Pause, false for Resume.
     action: Option<(usize, bool)>,
@@ -677,9 +946,10 @@ fn picking_id() -> egui::Id {
     egui::Id::unique("phone-picking")
 }
 
-/// The download list, one row per download: its icon, its name, then its progress bar and a line
-/// of what it is doing (size, speed, time left, status), in the list's own words ([`list::Row`]),
-/// and at its end its own button (Pause, Resume; [`RowState`]). In selection mode (`picking`) a
+/// The download list, one row per download: its icon, its name, then (not done) its progress
+/// bar, and a line of what it is doing: its status in its colour, its size, speed and time left
+/// (done: its size and when it finished), in the list's own words ([`list::Row`]). At its end its
+/// own button (Pause, Resume; [`RowState`]) and its menu (⋮). In selection mode (`picking`) a
 /// check circle takes the icon's place and the picked rows are tinted.
 fn phone_list(
     ui: &mut Ui,
@@ -697,102 +967,153 @@ fn phone_list(
         .show_rows(ui, ROW_H, rows.len(), |ui, range| {
             for i in range {
                 let row = &rows[i];
-                let (at, r) =
+                let (screen, r) =
                     ui.allocate_exact_size(egui::vec2(width, ROW_H), egui::Sense::click());
+                // English, mirrored where drawn.
+                let at = winui::rect(screen);
                 let state = states.get(i).copied().unwrap_or(RowState::Done);
-                // The row's own button, at its end (not in selection mode).
+                // At its end: its menu (⋮), and before it its own button (not in selection mode).
+                let more = (!picking).then(|| {
+                    egui::Rect::from_min_size(
+                        pos2(at.max.x - 8.0 - 40.0, at.center().y - 20.0),
+                        egui::vec2(40.0, 40.0),
+                    )
+                });
                 let button = (!picking && state != RowState::Done).then(|| {
                     egui::Rect::from_min_size(
-                        pos2(at.max.x - PAD - 40.0, at.center().y - 20.0),
+                        pos2(at.max.x - 8.0 - 40.0 - 44.0, at.center().y - 20.0),
                         egui::vec2(40.0, 40.0),
                     )
                 });
                 let picked = picking && selected.get(i).copied().unwrap_or(false);
-                let p = ui.painter();
                 if picked {
-                    p.rect_filled(at, 0.0, colors().selection_inactive);
-                } else if r.is_pointer_button_down_on() {
-                    p.rect_filled(at, 0.0, colors().row_pressed);
+                    ui.painter()
+                        .rect_filled(screen, 0.0, colors().selection_inactive);
                 }
-                let (ink, muted) = (colors().text, colors().muted);
-                // English x, mirrored for a right-to-left interface.
-                let x = |dx: f32| winui::mx(at.min.x + dx);
-                let align = if winui::rtl() {
-                    egui::Align2::RIGHT_CENTER
-                } else {
-                    egui::Align2::LEFT_CENTER
-                };
+                ripple(ui, screen, &r);
                 if picking {
                     check_circle(
                         ui,
+                        r.id,
                         winui::rect(egui::Rect::from_center_size(
-                            pos2(at.min.x + PAD + 8.0, at.min.y + 22.0),
-                            egui::vec2(20.0, 20.0),
+                            pos2(at.min.x + PAD + 16.0, at.min.y + 28.0),
+                            egui::vec2(24.0, 24.0),
                         )),
                         picked,
                     );
                 } else {
-                    // An English point: the painter places it (right to left, from the right).
-                    icons.paint(ui, row.icon.clone(), pos2(at.min.x + PAD, at.min.y + 14.0));
+                    // A file's icon at 32 points (its type's); an English point, the painter
+                    // places it (right to left, from the right).
+                    let (icon, dy) = match &row.icon {
+                        chrome::IconKey::Ext(e) => (chrome::IconKey::ExtLarge(e.clone()), 0.0),
+                        other => (other.clone(), 8.0),
+                    };
+                    icons.paint(ui, icon, pos2(at.min.x + PAD + dy, at.min.y + 12.0 + dy));
                 }
-                let text_x = PAD + 16.0 + 12.0;
-                let text_w = width - text_x - PAD - if button.is_some() { 48.0 } else { 0.0 };
+                let text_x = PAD + 32.0 + 14.0;
+                let end = match (button.is_some(), more.is_some()) {
+                    (true, _) => 8.0 + 40.0 + 44.0 + 4.0,
+                    (false, true) => 8.0 + 40.0 + 4.0,
+                    _ => PAD,
+                };
+                let text_w = width - text_x - end;
                 let name = elide(ui, &row.cells[0], font(16.0), text_w);
-                ui.painter().text(
-                    pos2(x(text_x), at.min.y + 22.0),
-                    align,
-                    name,
+                lead_text(
+                    ui,
+                    pos2(at.min.x + text_x, at.min.y + 22.0),
+                    &name,
                     font(16.0),
-                    ink,
+                    colors().text,
                 );
-                // The progress bar, when the size is known and it isn't done.
-                let bar = egui::Rect::from_min_size(
-                    pos2(at.min.x + text_x, at.min.y + 38.0),
-                    egui::vec2(text_w, 4.0),
+                // Its status in its colour, then its figures.
+                let status_color = match row.status_group {
+                    "Downloading" => colors().accent,
+                    "Complete" => colors().success,
+                    "Error" => colors().error,
+                    "Waiting" => colors().warning,
+                    _ => colors().muted,
+                };
+                let figures: Vec<&str> = if state == RowState::Done {
+                    vec![row.cells[2].as_str(), row.cells[6].as_str()]
+                } else {
+                    vec![
+                        row.cells[2].as_str(),
+                        row.cells[list::RATE].as_str(),
+                        row.cells[4].as_str(),
+                    ]
+                };
+                let figures = figures
+                    .into_iter()
+                    .filter(|s| !s.trim().is_empty())
+                    .collect::<Vec<_>>()
+                    .join("  ·  ");
+                let line_y = if state == RowState::Done { 50.0 } else { 62.0 };
+                status_line(
+                    ui,
+                    pos2(at.min.x + text_x, at.min.y + line_y),
+                    text_w,
+                    &row.cells[list::STATUS],
+                    status_color,
+                    &figures,
                 );
+                // The progress bar (not done, the size known), moving smoothly to where it is.
                 if let Some(done) = row.progress.filter(|_| state != RowState::Done) {
-                    let screen = winui::rect(bar);
-                    ui.painter()
-                        .rect_filled(screen, 2.0, colors().progress_track);
-                    let filled = egui::Rect::from_min_size(
-                        bar.min,
-                        egui::vec2(bar.width() * done.clamp(0.0, 1.0) as f32, bar.height()),
+                    let shown = ui.ctx().animate_value_with_time(
+                        r.id.with("bar"),
+                        done.clamp(0.0, 1.0) as f32,
+                        0.35,
+                    );
+                    let bar = egui::Rect::from_min_size(
+                        pos2(at.min.x + text_x, at.min.y + 39.0),
+                        egui::vec2(text_w, 6.0),
                     );
                     ui.painter()
-                        .rect_filled(winui::rect(filled), 2.0, colors().progress_bar);
+                        .rect_filled(winui::rect(bar), 3.0, colors().progress_track);
+                    let filled = egui::Rect::from_min_size(
+                        bar.min,
+                        egui::vec2(bar.width() * shown, bar.height()),
+                    );
+                    let fill = if state == RowState::Running {
+                        colors().progress_bar
+                    } else {
+                        colors().muted
+                    };
+                    ui.painter().rect_filled(winui::rect(filled), 3.0, fill);
                 }
-                let line = [
-                    row.cells[list::STATUS].as_str(),
-                    row.cells[2].as_str(),
-                    row.cells[list::RATE].as_str(),
-                    row.cells[4].as_str(),
-                ]
-                .into_iter()
-                .filter(|s| !s.trim().is_empty())
-                .collect::<Vec<_>>()
-                .join("  ·  ");
-                let line = elide(ui, &line, font(13.0), text_w);
-                ui.painter().text(
-                    pos2(x(text_x), at.min.y + 56.0),
-                    align,
-                    line,
-                    font(13.0),
-                    muted,
-                );
                 ui.painter().hline(
                     winui::rect(at.with_min_x(at.min.x + text_x)).x_range(),
-                    at.max.y - 0.5,
+                    screen.max.y - 0.5,
                     egui::Stroke::new(1.0, colors().list_grid),
                 );
-                // Its own button, over the row (a tap on it isn't one on the row).
+                // Its own buttons, over the row (a tap on one isn't one on the row).
                 let mut on_button = false;
                 if let Some(b) = button {
-                    let screen = winui::rect(b);
-                    let br = ui.interact(screen, r.id.with("own"), egui::Sense::click());
-                    on_button = br.hovered() || br.is_pointer_button_down_on();
-                    row_button(ui, screen, state == RowState::Running, &br);
+                    let bs = winui::rect(b);
+                    let br = ui.interact(bs, r.id.with("own"), egui::Sense::click());
+                    on_button |= br.hovered() || br.is_pointer_button_down_on();
+                    row_button(ui, bs, state == RowState::Running, &br);
                     if br.clicked() {
                         touch.action = Some((i, state == RowState::Running));
+                    }
+                }
+                if let Some(m) = more {
+                    let ms = winui::rect(m);
+                    let mr = ui.interact(ms, r.id.with("more"), egui::Sense::click());
+                    on_button |= mr.hovered() || mr.is_pointer_button_down_on();
+                    if mr.is_pointer_button_down_on() {
+                        ui.painter()
+                            .circle_filled(ms.center(), 20.0, colors().toolbar_pressed);
+                    }
+                    for dy in [-6.0, 0.0, 6.0] {
+                        ui.painter().circle_filled(
+                            ms.center() + egui::vec2(0.0, dy),
+                            2.0,
+                            colors().muted,
+                        );
+                    }
+                    winui::expose(&mr, egui::Role::Button, &row.cells[0], true, None);
+                    if mr.clicked() {
+                        touch.menu = Some((i, ms.left_bottom()));
                     }
                 }
                 let held = !on_button && held_long(ui, &r);
@@ -800,7 +1121,7 @@ fn phone_list(
                 let after_hold = r.clicked()
                     && ui.data_mut(|d| d.remove_temp::<bool>(r.id.with("held-done")).is_some());
                 if r.secondary_clicked() {
-                    let p = r.interact_pointer_pos().unwrap_or(at.center());
+                    let p = r.interact_pointer_pos().unwrap_or(screen.center());
                     touch.menu = Some((i, p));
                 } else if held {
                     touch.tapped = Some((i, true));
@@ -813,27 +1134,115 @@ fn phone_list(
     touch
 }
 
-/// Selection mode's check circle at `screen`: filled with a tick when `on`, a ring when not.
-fn check_circle(ui: &Ui, screen: egui::Rect, on: bool) {
+/// A row's line at English point `at` (its left middle), `width` wide: `status` in `color`, then
+/// `figures` muted, cut with "…" when it doesn't fit.
+fn status_line(ui: &Ui, at: Pos2, width: f32, status: &str, color: egui::Color32, figures: &str) {
+    let mut job = egui::text::LayoutJob::default();
+    let format = |color| egui::TextFormat {
+        font_id: font(13.0),
+        color,
+        ..Default::default()
+    };
+    if !status.trim().is_empty() {
+        job.append(status, 0.0, format(color));
+    }
+    if !figures.is_empty() {
+        let lead = if job.text.is_empty() { "" } else { "  ·  " };
+        job.append(&format!("{lead}{figures}"), 0.0, format(colors().muted));
+    }
+    job.wrap = egui::text::TextWrapping {
+        max_width: width,
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('…'),
+    };
+    let galley = ui.painter().layout_job(job);
+    let x = if winui::rtl() {
+        winui::mx(at.x) - galley.size().x
+    } else {
+        at.x
+    };
+    let pos = pos2(x, at.y - galley.size().y / 2.0);
+    ui.painter().galley(pos, galley, colors().muted);
+}
+
+/// Where a finger pressed `r` (at `screen`): a circle spreading from it while it is down, fading
+/// once let go, as Android's lists answer a touch.
+fn ripple(ui: &Ui, screen: egui::Rect, r: &egui::Response) {
+    let key = r.id.with("ripple");
+    let now = ui.input(|i| i.time);
+    let down = r.is_pointer_button_down_on();
+    let mut state = ui.data(|d| d.get_temp::<(Pos2, f64, Option<f64>)>(key));
+    if down {
+        if state.is_none_or(|(_, _, up)| up.is_some()) {
+            let at = ui
+                .input(|i| i.pointer.press_origin())
+                .unwrap_or(screen.center());
+            state = Some((at, now, None));
+        }
+    } else if let Some((at, start, None)) = state {
+        state = Some((at, start, Some(now)));
+    }
+    let Some((at, start, up)) = state else {
+        return;
+    };
+    let grow = ((now - start) / 0.35).min(1.0) as f32;
+    let fade = up.map_or(1.0, |u| 1.0 - ((now - u) / 0.25).min(1.0) as f32);
+    if fade <= 0.0 {
+        ui.data_mut(|d| d.remove::<(Pos2, f64, Option<f64>)>(key));
+        return;
+    }
+    ui.data_mut(|d| d.insert_temp(key, (at, start, up)));
+    let reach = screen.width().max(screen.height());
+    let eased = 1.0 - (1.0 - grow).powi(3);
+    let p = ui
+        .painter()
+        .with_clip_rect(screen.intersect(ui.clip_rect()));
+    p.circle_filled(at, reach * eased, colors().row_pressed.gamma_multiply(fade));
+    ui.ctx().request_repaint();
+}
+
+/// A ring at `c` of `radius`: its track, and `frac` (0 to 1) of it filled from the top,
+/// clockwise.
+fn ring(ui: &Ui, c: Pos2, radius: f32, frac: f32) {
+    let p = ui.painter();
+    p.circle_stroke(c, radius, egui::Stroke::new(4.0, colors().progress_track));
+    if frac <= 0.0 {
+        return;
+    }
+    let steps = (64.0 * frac).ceil().max(2.0) as usize;
+    let points: Vec<Pos2> = (0..=steps)
+        .map(|k| {
+            let a = -std::f32::consts::FRAC_PI_2
+                + std::f32::consts::TAU * frac * k as f32 / steps as f32;
+            c + egui::vec2(a.cos(), a.sin()) * radius
+        })
+        .collect();
+    p.add(egui::Shape::line(
+        points,
+        egui::Stroke::new(4.0, colors().progress_bar),
+    ));
+}
+
+/// Selection mode's check circle at `screen`: filled with a tick when `on` (growing in), a ring
+/// when not.
+fn check_circle(ui: &Ui, id: egui::Id, screen: egui::Rect, on: bool) {
+    let grow = ui.ctx().animate_bool_with_time(id.with("check"), on, 0.15);
     let p = ui.painter();
     let c = screen.center();
-    if on {
-        p.circle_filled(c, 10.0, colors().selection);
-        let tick = [
-            c + egui::vec2(-4.5, 0.0),
-            c + egui::vec2(-1.5, 3.5),
-            c + egui::vec2(5.0, -3.5),
-        ];
-        p.line_segment(
-            [tick[0], tick[1]],
-            egui::Stroke::new(2.0, colors().selection_text),
-        );
-        p.line_segment(
-            [tick[1], tick[2]],
-            egui::Stroke::new(2.0, colors().selection_text),
-        );
-    } else {
-        p.circle_stroke(c, 9.0, egui::Stroke::new(1.5, colors().muted));
+    p.circle_stroke(c, 10.0, egui::Stroke::new(1.5, colors().muted));
+    if grow > 0.0 {
+        p.circle_filled(c, 11.0 * grow, colors().selection);
+        if grow > 0.6 {
+            let ink = colors().selection_text;
+            let tick = [
+                c + egui::vec2(-4.5, 0.0),
+                c + egui::vec2(-1.5, 3.5),
+                c + egui::vec2(5.0, -3.5),
+            ];
+            p.line_segment([tick[0], tick[1]], egui::Stroke::new(2.0, ink));
+            p.line_segment([tick[1], tick[2]], egui::Stroke::new(2.0, ink));
+        }
     }
 }
 
@@ -913,6 +1322,22 @@ fn held_long(ui: &Ui, r: &egui::Response) -> bool {
             .request_repaint_after(std::time::Duration::from_millis(50));
     }
     fire
+}
+
+/// `text` from English point `at` (its left middle; mirrored, and its right middle, right to
+/// left).
+fn lead_text(ui: &Ui, at: Pos2, text: &str, font: egui::FontId, color: egui::Color32) {
+    ui.painter().text(
+        winui::rect(egui::Rect::from_min_size(at, egui::Vec2::ZERO)).min,
+        if winui::rtl() {
+            egui::Align2::RIGHT_CENTER
+        } else {
+            egui::Align2::LEFT_CENTER
+        },
+        text,
+        font,
+        color,
+    );
 }
 
 /// `text` cut with "…" to fit `width` in `font`.
