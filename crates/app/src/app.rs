@@ -4825,7 +4825,13 @@ impl App {
             .collect();
         self.deleter.delete(doomed);
         let after = self.shown_ids();
-        self.selection.after_removal(&before, &after);
+        // A phone (phone.rs) picks nothing after a removal: the row after isn't what the person
+        // picked, and selection mode ends with nothing picked. The desktop picks it, as Explorer.
+        if crate::app::phone::active(&self.ui_ctx) {
+            self.selection.apply(crate::selection::Pick::Clear, &after);
+        } else {
+            self.selection.after_removal(&before, &after);
+        }
     }
 
     /// Download `id` went through a debrid account and ended (done, or taken off the list): the
@@ -14322,6 +14328,7 @@ impl App {
                 progress::Action::Pause => self.stop_by_hand(id),
                 progress::Action::Resume => self.start(id, true),
                 progress::Action::Cancel => self.cancel_download(id),
+                progress::Action::Properties => self.run(Cmd::Properties, Some(id), ctx),
                 progress::Action::Rename(name) => {
                     if let Some(item) = self.item(id) {
                         item.rename_on_complete = name;
