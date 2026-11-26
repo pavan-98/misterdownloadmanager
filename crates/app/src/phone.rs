@@ -149,15 +149,18 @@ impl App {
                 crate::selection::Pick::Only(i)
             };
             self.selection.apply(pick, &ids);
+            // A tap opens it, as Android's lists do: a download that isn't done shows its
+            // details (its progress page), a finished one opens its file. Not while several
+            // are picked: a tap adds or takes one away then.
+            if !picking && !held {
+                self.open_item(ids[i]);
+            }
         }
         if let Some((i, at)) = picked.menu {
             if !selected.get(i).copied().unwrap_or(false) {
                 self.selection.apply(crate::selection::Pick::Only(i), &ids);
             }
             self.open_popup_asked(Popup::Item(Some(ids[i])), at, &ctx);
-        }
-        if let Some(i) = picked.opened {
-            self.open_item(ids[i]);
         }
         if ids.is_empty()
             && let Some(cmd) = self.empty_state(ui, winui::rect(body))
@@ -380,8 +383,6 @@ struct ListTouch {
     tapped: Option<(usize, bool)>,
     /// A row's menu asked for (a long press, a right-click), where.
     menu: Option<(usize, Pos2)>,
-    /// A row opened (a double tap).
-    opened: Option<usize>,
 }
 
 /// The download list, one row per download: its icon, its name, then its progress bar and a line
@@ -478,13 +479,17 @@ fn phone_list(
                     egui::Stroke::new(1.0, colors().list_grid),
                 );
                 let held = held_long(ui, &r);
-                if r.double_clicked() {
-                    touch.opened = Some(i);
-                } else if r.secondary_clicked() || held {
+                // The release that ends a long press is no tap: its menu is open.
+                let after_hold = r.clicked()
+                    && ui.data_mut(|d| d.remove_temp::<bool>(r.id.with("held-done")).is_some());
+                if r.secondary_clicked() || held {
                     let p = r.interact_pointer_pos().unwrap_or(at.center());
                     touch.menu = Some((i, p));
                     touch.tapped = Some((i, true));
-                } else if r.clicked() {
+                    if held {
+                        ui.data_mut(|d| d.insert_temp(r.id.with("held-done"), true));
+                    }
+                } else if r.clicked() && !after_hold {
                     touch.tapped = Some((i, false));
                 }
             }
