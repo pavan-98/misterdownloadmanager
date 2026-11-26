@@ -121,6 +121,56 @@ fn entrance(ctx: &egui::Context, id: egui::Id, secs: f64) -> f32 {
     1.0 - (1.0 - t).powi(3)
 }
 
+/// A big button's height on a phone's page ([`button_rects`]): 40 points, a finger's.
+pub(crate) const BUTTON_H: f32 = 40.0;
+
+/// Where a phone's page puts its `n` buttons, from English y `top` of a page `width` wide (both
+/// relative to the page's origin `o`, as `winui::r` takes them): big buttons across the page,
+/// the first alone on its row when `lead` (the page's main action), the rest two by two. The
+/// screen rects in the buttons' order, and the height the rows take.
+pub(crate) fn button_rects(
+    o: Pos2,
+    top: f32,
+    width: f32,
+    n: usize,
+    lead: bool,
+) -> (Vec<egui::Rect>, f32) {
+    const MARGIN: f32 = 11.0;
+    const GAP: f32 = 8.0;
+    let full = width - 2.0 * MARGIN;
+    let half = (full - GAP) / 2.0;
+    let mut rects = Vec::with_capacity(n);
+    let mut y = top;
+    let mut k = 0;
+    if lead && n > 0 {
+        rects.push(winui::r(o, MARGIN, y, full, BUTTON_H));
+        y += BUTTON_H + GAP;
+        k = 1;
+    }
+    while k < n {
+        if k + 1 < n {
+            rects.push(winui::r(o, MARGIN, y, half, BUTTON_H));
+            rects.push(winui::r(o, MARGIN + half + GAP, y, half, BUTTON_H));
+            k += 2;
+        } else {
+            rects.push(winui::r(o, MARGIN, y, full, BUTTON_H));
+            k += 1;
+        }
+        y += BUTTON_H + GAP;
+    }
+    (rects, (y - GAP - top).max(0.0))
+}
+
+/// The width a window lays itself out in: the phone's page's on a phone (its controls take the
+/// room it has), `desktop` elsewhere.
+pub(crate) fn layout_width(ctx: &egui::Context, desktop: f32) -> f32 {
+    if active(ctx) {
+        sheet_width(ctx)
+    } else {
+        desktop
+    }
+}
+
 /// A page laid out wider than the phone (a desktop window's layout: Download video, the
 /// Scheduler...) drawn smaller to fit its width, so every control and button is on the screen:
 /// in a layer of its own, scaled (input too) from the top left of `ui`'s room. `width` is the

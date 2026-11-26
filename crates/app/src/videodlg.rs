@@ -166,13 +166,19 @@ const PART_ROWS: f32 = 52.0;
 /// [`VideoDialog::split_row`]).
 const BUTTONS_Y: f32 = 389.0 + PART_ROWS;
 
-/// The window's width: the desktop's, or on a phone (phone.rs) a narrower layout that fits one
-/// (drawn smaller on a narrow one): the address, the list and the fields take what it leaves.
+/// The window's width: the desktop's, or on a phone (phone.rs) the page's: the address, the
+/// list and the fields take what it leaves.
 fn width(ctx: &egui::Context) -> f32 {
+    crate::app::phone::layout_width(ctx, 500.0)
+}
+
+/// On a phone (phone.rs), how much taller the window is for its big buttons: Download Now on
+/// its own row, Later and Cancel, then Helpers..., where the desktop has one row.
+fn phone_buttons_extra(ctx: &egui::Context) -> f32 {
     if crate::app::phone::active(ctx) {
-        430.0
+        3.0 * crate::app::phone::BUTTON_H + 2.0 * 8.0 - 21.0
     } else {
-        500.0
+        0.0
     }
 }
 
@@ -525,7 +531,7 @@ impl VideoDialog {
             self.confirmed = Some(now);
             ctx.request_repaint();
         }
-        let height = 422.0 + PART_ROWS + self.split_row();
+        let height = 422.0 + PART_ROWS + self.split_row() + phone_buttons_extra(ctx);
         let out = window(
             ctx,
             "video-page",
@@ -1218,10 +1224,22 @@ impl VideoDialog {
             &[("Helpers...", 90.0)],
             now_at.0 - 8.0 - 11.0,
         )[0];
+        // A phone (phone.rs): big buttons across the page, Download Now first.
+        let [now_r, later_r, cancel_r, helpers_r] = if crate::app::phone::active(ui.ctx()) {
+            let (b, _) = crate::app::phone::button_rects(o, buttons_y, width(ui.ctx()), 4, true);
+            [b[0], b[1], b[2], b[3]]
+        } else {
+            [
+                r(o, now_at.0, buttons_y, now_at.1, 21.0),
+                r(o, later_at.0, buttons_y, later_at.1, 21.0),
+                r(o, cancel_at.0, buttons_y, cancel_at.1, 21.0),
+                r(o, helpers_at.0, buttons_y, helpers_at.1, 21.0),
+            ]
+        };
         // Where yt-dlp and ffmpeg come from: MDM's own copies or the person's (#51).
         if winui::button(
             ui,
-            r(o, helpers_at.0, buttons_y, helpers_at.1, 21.0),
+            helpers_r,
             // i18n: button in Download video: where MDM takes yt-dlp and ffmpeg from
             "Helpers...",
             ButtonKind::Normal,
@@ -1232,14 +1250,7 @@ impl VideoDialog {
         {
             self.open_helpers();
         }
-        let now = winui::button(
-            ui,
-            r(o, now_at.0, buttons_y, now_at.1, 21.0),
-            "Download Now",
-            kind(true),
-            false,
-            None,
-        );
+        let now = winui::button(ui, now_r, "Download Now", kind(true), false, None);
         // i18n: why Download Now is greyed: the page address was changed after the look-up
         let now = winui::why_disabled(now, stale, "Look up the new address first");
         // i18n: why Download Now is greyed: a playlist's videos are still being listed
@@ -1253,7 +1264,7 @@ impl VideoDialog {
         let now = now.clicked() || (ready && winui::enter_pressed(ui));
         let later = winui::button(
             ui,
-            r(o, later_at.0, buttons_y, later_at.1, 21.0),
+            later_r,
             // i18n: button: add it now, start downloading later
             "Later",
             kind(false),
@@ -1261,15 +1272,8 @@ impl VideoDialog {
             None,
         )
         .clicked();
-        let cancel = winui::button(
-            ui,
-            r(o, cancel_at.0, buttons_y, cancel_at.1, 21.0),
-            "Cancel",
-            ButtonKind::Normal,
-            false,
-            None,
-        )
-        .clicked();
+        let cancel =
+            winui::button(ui, cancel_r, "Cancel", ButtonKind::Normal, false, None).clicked();
         // Escape answers the playlist's question first, when it's asked.
         let asking = self.list.as_ref().is_some_and(|l| l.asking());
         if cancel || (winui::escape_pressed(ui) && !asking) {
