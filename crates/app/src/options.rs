@@ -449,6 +449,10 @@ impl OptionsDialog {
                 crate::app::phone::sheet_width(ctx),
                 rows * PHONE_ROW + 16.0 + 60.0,
             ]
+        } else if phone {
+            // A section's page on a phone: no tabs, so its content (16 to 414 points) is laid
+            // out 412 wide, moved left by `PHONE_PAGE_SHIFT`: full size on most phones.
+            [430.0 - 2.0 * PHONE_PAGE_SHIFT, 506.0]
         } else {
             [430.0, 506.0]
         };
@@ -463,6 +467,11 @@ impl OptionsDialog {
                 if listing {
                     return self.phone_list(ui, o, client[0]);
                 }
+                let o = if phone {
+                    o - vec2(PHONE_PAGE_SHIFT, 0.0)
+                } else {
+                    o
+                };
                 if phone {
                     // The section's name over its page, where the tabs were: a tap, or Back,
                     // goes back to the list.
@@ -5361,6 +5370,9 @@ const PHONE_SECTIONS: [(usize, &str); 10] = [
 /// A row of the phone's list of sections.
 const PHONE_ROW: f32 = 52.0;
 
+/// How far a section's page moves left on a phone (its tabs' frame isn't drawn there).
+const PHONE_PAGE_SHIFT: f32 = 9.0;
+
 impl OptionsDialog {
     /// A phone's Options (phone.rs): its sections as rows a finger can hit, each opening its page
     /// ([`PHONE_SECTIONS`]); OK and Cancel under them.
@@ -5441,7 +5453,13 @@ fn phone_back(ui: &mut Ui, o: Pos2, page: usize) -> bool {
         .iter()
         .find(|(p, _)| *p == page)
         .map_or("General", |(_, l)| *l);
-    let row = r(o, 0.0, 0.0, 430.0, 40.0);
+    let row = r(
+        o,
+        PHONE_PAGE_SHIFT,
+        0.0,
+        430.0 - 2.0 * PHONE_PAGE_SHIFT,
+        40.0,
+    );
     let resp = ui.interact(row, egui::Id::unique("options-back"), egui::Sense::click());
     let text = format!(
         "{}  {}",
@@ -5452,7 +5470,7 @@ fn phone_back(ui: &mut Ui, o: Pos2, page: usize) -> bool {
     winui::text_font(
         &ui.painter().clone(),
         egui::FontId::new(16.0, winui::tahoma().family),
-        o.x + 12.0,
+        o.x + PHONE_PAGE_SHIFT + 12.0,
         o.y + 26.0,
         &text,
         winui::TEXT(),
