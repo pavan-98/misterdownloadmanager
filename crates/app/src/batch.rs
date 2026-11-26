@@ -237,7 +237,8 @@ impl Batch {
             true,
             false,
         );
-        let focus_address = !self.focused && !self.focus_to;
+        // Not on a phone: the keyboard it opens would cover the page (phone.rs).
+        let focus_address = !self.focused && !self.focus_to && !crate::app::phone::active(ui.ctx());
         if focus_address {
             edit.request_focus();
         }

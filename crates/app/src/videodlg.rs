@@ -737,7 +737,8 @@ impl VideoDialog {
             true,
             false,
         );
-        if !self.focused {
+        // Not on a phone: the keyboard it opens would cover the page (phone.rs).
+        if !self.focused && !crate::app::phone::active(ui.ctx()) {
             edit.request_focus();
             self.focused = true;
         }
