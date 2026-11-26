@@ -34,14 +34,20 @@ code). A release build and its signing are the maintainer's.
 ## What the app does
 
 - The download list in a phone layout (`crates/app/src/phone.rs`): a top bar with the
-  categories' drawer and a menu of the rest, rows for a finger (a long press opens a row's
-  menu), the toolbar's main buttons at the bottom
+  categories' drawer and a menu of the rest, rows for a finger, each with its own Pause or
+  Resume; a tap opens a download (its progress page, or a finished one's file); a long press
+  starts selection mode (check circles, "N selected", Select all, the picked downloads' menu,
+  Resume / Stop / Delete at the bottom); out of it the bottom bar has Add URL, Video, Stop All
+  and the Scheduler
 - Every window (Add URL, Download File Info, the progress window, Options, Add torrent...) as a
-  page over the list, its title in a top bar whose × closes it; **Back** closes the page in front,
-  and on the list sends the app to the background
+  page over the list, its title in a top bar whose × closes it, laid out for the phone's width
+  with big buttons at the bottom (a few rarely used ones, such as Torrent settings, are drawn a
+  little smaller to fit); pages slide in, menus rise from the bottom; **Back** closes the page,
+  menu or selection in front, and on the list sends the app to the background
 - Downloads in `Download/MisterDownloadManager`, kept going by a foreground service whose
   notification says how they go and has **Stop All**; each download has its own notification
-  (a progress bar, its figures, **Stop**), and one that completes says so, with **Open**
+  (a progress bar, its figures, **Stop**), and one that completes says so, with **Open** (no
+  Download complete page over the app)
 - Links in: Share (text with links), a file's link or a magnet opened with MDM, a `.torrent`
   opened or shared; files out: **Open**, **Open with...** and **Open folder** through Android's
   apps
@@ -52,8 +58,8 @@ code). A release build and its signing are the maintainer's.
 
 ## Not yet
 
-- Windows wider than a phone (Download video, Link grabber, Batch download, the Scheduler) keep
-  their desktop layout: a finger moves the page to the rest of it
+- Controls inside the pages keep the desktop's size (21 point fields and check boxes; a touch
+  near one reaches it); only the pages' main buttons are a finger's size
 - Downloads go on while the app runs in the background; if Android closes the app, they stop
   where they were and go on at its next start
 - Resuming after the phone restarts (Android doesn't let an app open its screen by itself then)
