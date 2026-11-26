@@ -33,12 +33,16 @@ code). A release build and its signing are the maintainer's.
 
 ## What the app does
 
-- The download list in a phone layout (`crates/app/src/phone.rs`): a top bar with the
-  categories' drawer and a menu of the rest, rows for a finger, each with its own Pause or
-  Resume; a tap opens a download (its progress page, or a finished one's file); a long press
-  starts selection mode (check circles, "N selected", Select all, the picked downloads' menu,
-  Resume / Stop / Delete at the bottom); out of it the bottom bar has Add URL, Video, Stop All
-  and the Scheduler
+- The download list in a phone layout (`crates/app/src/phone.rs`): under the top bar a card of
+  how the downloads go (their speed, how many run, a ring with how far they are) and chips for
+  All, Unfinished and Finished; rows for a finger with the file type's icon, a progress bar, the
+  status in its colour and the figures, each with its own Pause or Resume and ⋮ menu; a tap
+  opens a download (its page, or a finished one's file); a long press starts selection mode
+  (check circles, "N selected", Select all, the picked downloads' menu, Resume / Stop / Delete
+  at the bottom); out of it the bottom bar has Add URL, Video, Stop All and the Scheduler; the
+  drawer has the categories and queues, then the rest of the commands
+- A download's page: its figures, the whole progress bar and under it each connection's part
+  (the desktop's split view), Pause / Cancel, Properties / Open folder, its connections
 - Every window (Add URL, Download File Info, the progress window, Options, Add torrent...) as a
   page over the list, its title in a top bar whose × closes it, laid out for the phone's width
   with big buttons at the bottom (a few rarely used ones, such as Torrent settings, are drawn a
