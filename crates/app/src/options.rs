@@ -3916,7 +3916,10 @@ impl OptionsDialog {
                     ctx,
                     "opt-login",
                     title,
-                    [300.0, 150.0],
+                    [
+                        300.0,
+                        150.0 + crate::app::phone::phone_buttons_extra(ctx, 1),
+                    ],
                     false,
                     LIGHT_BG(),
                     |ui, o| {
@@ -3985,7 +3988,10 @@ impl OptionsDialog {
                     ctx,
                     "opt-exception",
                     title,
-                    [300.0, 118.0],
+                    [
+                        300.0,
+                        118.0 + crate::app::phone::phone_buttons_extra(ctx, 1),
+                    ],
                     false,
                     LIGHT_BG(),
                     |ui, o| {
@@ -4051,7 +4057,10 @@ impl OptionsDialog {
                     "opt-panels",
                     // i18n: window title: the download button the extension shows over videos
                     "Download panels",
-                    [380.0, 241.0 + DY],
+                    [
+                        380.0,
+                        241.0 + DY + crate::app::phone::phone_buttons_extra(ctx, 1),
+                    ],
                     false,
                     LIGHT_BG(),
                     |ui, o| {
@@ -4243,7 +4252,10 @@ impl OptionsDialog {
                     "opt-dns",
                     // i18n: window title: the settings of the DNS chosen in Options → Connection
                     "DNS settings",
-                    [400.0, 312.0],
+                    [
+                        400.0,
+                        312.0 + crate::app::phone::phone_buttons_extra(ctx, 1),
+                    ],
                     false,
                     LIGHT_BG(),
                     |ui, o| dns_dialog(ui, o, &mut e),
@@ -4294,7 +4306,10 @@ impl OptionsDialog {
                     "opt-archive-passwords",
                     // i18n: window title: the passwords tried on encrypted archives
                     "Archive passwords",
-                    [420.0, 230.0],
+                    [
+                        420.0,
+                        230.0 + crate::app::phone::phone_buttons_extra(ctx, 1),
+                    ],
                     false,
                     LIGHT_BG(),
                     |ui, o| {
@@ -4335,7 +4350,10 @@ impl OptionsDialog {
                     "opt-addresses",
                     // i18n: window title: the addresses whose downloads stay with the browser
                     "Addresses left to the browser",
-                    [420.0, 230.0],
+                    [
+                        420.0,
+                        230.0 + crate::app::phone::phone_buttons_extra(ctx, 1),
+                    ],
                     false,
                     LIGHT_BG(),
                     |ui, o| {
@@ -4380,7 +4398,10 @@ impl OptionsDialog {
                     "opt-keys",
                     // i18n: window title: the keys that force or prevent downloading with MDM
                     "Keys",
-                    [400.0, 160.0],
+                    [
+                        400.0,
+                        160.0 + crate::app::phone::phone_buttons_extra(ctx, 1),
+                    ],
                     false,
                     LIGHT_BG(),
                     |ui, o| {
@@ -5296,15 +5317,17 @@ fn ok_cancel(ui: &mut Ui, o: Pos2, x: f32, y: f32, valid: bool) -> Outcome<()> {
     } else {
         ButtonKind::Disabled
     };
-    let ok = winui::button_light(ui, r(o, x, y, 73.0, 21.0), "OK", kind, false).clicked();
-    let cancel = winui::button_light(
-        ui,
+    // A phone: the two big across the window (its right edge is the buttons' and its margin).
+    let (ok_at, cancel_at) = crate::app::phone::pair_or(
+        ui.ctx(),
+        o,
+        y,
+        x + 81.0 + 73.0 + 11.0,
+        r(o, x, y, 73.0, 21.0),
         r(o, x + 81.0, y, 73.0, 21.0),
-        "Cancel",
-        ButtonKind::Normal,
-        false,
-    )
-    .clicked();
+    );
+    let ok = winui::button_light(ui, ok_at, "OK", kind, false).clicked();
+    let cancel = winui::button_light(ui, cancel_at, "Cancel", ButtonKind::Normal, false).clicked();
     if cancel || winui::escape_pressed(ui) {
         Outcome::Closed
     } else if valid && (ok || winui::enter_pressed(ui)) {
