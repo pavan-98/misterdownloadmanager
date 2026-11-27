@@ -40,7 +40,8 @@ code). A release build and its signing are the maintainer's.
   opens a download (its page, or a finished one's file); a long press starts selection mode
   (check circles, "N selected", Select all, the picked downloads' menu, Resume / Stop / Delete
   at the bottom); out of it the bottom bar has Add URL, Video, Stop All and the Scheduler; the
-  drawer has the categories and queues, then the rest of the commands
+  drawer has the categories and queues, then the rest of the commands; the top bar searches
+  the list (by file name) and sorts it (the desktop's Arrange files); all in MDM's theme colours
 - A download's page: its figures, the whole progress bar and under it each connection's part
   (the desktop's split view), Pause / Cancel, Properties / Open folder, its connections
 - Every window (Add URL, Download File Info, the progress window, Options, Add torrent...) as a
