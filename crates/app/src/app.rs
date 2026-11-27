@@ -10683,6 +10683,9 @@ impl App {
         use MenuEntry::{Item as I, Sep, Sub};
         let can_stop_all = self.can_stop_all();
         vec![
+            // First: the top bar's sort button opens it (phone.rs).
+            self.arrange_menu(),
+            Sep,
             I("Open &torrent file...", Cmd::OpenTorrentFile, true, false),
             I("Add &magnet link...", Cmd::AddMagnet, true, false),
             I("Add &batch download", Cmd::Batch, true, false),

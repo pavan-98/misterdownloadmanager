@@ -1577,7 +1577,7 @@
 #. File Properties button that opens the selected torrent's file list
 #. the trailing ... means it opens a window: keep it
 	Files...	Files...
-#. button in the Find window
+#. button in the Find window; text in phone.rs
 #. verb: button that starts the search
 	Find	Find
 #. text in the Options window

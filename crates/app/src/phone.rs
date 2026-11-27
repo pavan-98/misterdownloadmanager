@@ -388,55 +388,113 @@ impl App {
             egui::Rect::from_min_size(pos2(top.max.x - side, top.min.y), egui::vec2(side, side));
         let all_at = more_at.translate(egui::vec2(-side, 0.0));
         let picked_n = self.selection.ids().len() as u64;
+        // Search: the file names that have what is typed (the desktop's File Name filter).
+        let mut searching = !picking
+            && ctx
+                .data(|d| d.get_temp::<bool>(search_id()))
+                .unwrap_or(false);
         let (lead, title) = if picking {
             (
                 Glyph::Close,
                 crate::i18n::tn(picked_n, "{n} selected", "{n} selected"),
             )
+        } else if searching {
+            (Glyph::Close, String::new())
         } else {
             (Glyph::Menu, self.view_title())
         };
-        if bar_button(ui, menu_at, ("phone-lead", picking), lead) {
+        if bar_button(ui, menu_at, ("phone-lead", picking, searching), lead) {
             if picking {
                 picking = false;
                 self.selection.apply(crate::selection::Pick::Clear, &ids);
+            } else if searching {
+                searching = false;
             } else {
                 ctx.data_mut(|d| d.insert_temp(drawer_id(), true));
             }
         }
         let tx = menu_at.max.x + 4.0;
-        let title_room = if picking { all_at.min.x } else { more_at.min.x } - PAD - tx;
-        let title = elide(ui, &title, font_bold(18.0), title_room);
-        ui.painter().text(
-            winui::rect(egui::Rect::from_min_size(
+        if searching {
+            let mut query = match self.list.filters.first() {
+                Some(Some(list::Filter::Text(t))) => t.clone(),
+                _ => String::new(),
+            };
+            let field = winui::rect(egui::Rect::from_min_max(
+                pos2(tx, top.min.y + 10.0),
+                pos2(top.max.x - PAD, top.max.y - 10.0),
+            ));
+            let edit = ui.put(
+                field,
+                egui::TextEdit::singleline(&mut query)
+                    .font(font(18.0))
+                    .frame(egui::Frame::NONE)
+                    .hint_text(crate::i18n::t("Find"))
+                    .id(egui::Id::unique("phone-search-box")),
+            );
+            if ctx
+                .data_mut(|d| d.remove_temp::<bool>(search_id().with("focus")))
+                .is_some()
+            {
+                edit.request_focus();
+            }
+            ui.painter().hline(
+                field.x_range(),
+                field.max.y,
+                egui::Stroke::new(1.0, colors().selection),
+            );
+            set_name_filter(&mut self.list, &query);
+        } else {
+            let title_room = all_at.min.x - PAD - tx;
+            let title = elide(ui, &title, font_bold(18.0), title_room);
+            lead_text(
+                ui,
                 pos2(tx, top.center().y),
-                egui::Vec2::ZERO,
-            ))
-            .min,
-            if winui::rtl() {
-                egui::Align2::RIGHT_CENTER
-            } else {
-                egui::Align2::LEFT_CENTER
-            },
-            title,
-            font_bold(18.0),
-            colors().text,
-        );
+                &title,
+                font_bold(18.0),
+                colors().text,
+            );
+        }
         if picking && bar_button(ui, all_at, "phone-select-all", Glyph::SelectAll) {
             self.selection.apply(crate::selection::Pick::All, &ids);
         }
-        // ⋮ in selection mode only: the rest of the commands are at the drawer's bottom.
+        // Out of selection and search: search and sort (the desktop's Arrange files).
+        if !picking && !searching {
+            if bar_button(ui, all_at, "phone-search", Glyph::Search) {
+                searching = true;
+                ctx.data_mut(|d| d.insert_temp(search_id().with("focus"), true));
+            }
+            if bar_button(ui, more_at, "phone-sort", Glyph::Sort) {
+                self.open_popup_asked(Popup::PhoneMore, winui::rect(more_at).left_bottom(), &ctx);
+                if let Some((_, _, serial)) = self.popup {
+                    ctx.data_mut(|d| {
+                        d.insert_temp(egui::Id::unique(("phone-menu-path", serial)), vec![0usize]);
+                        d.insert_temp(egui::Id::unique(("phone-menu-base", serial)), 1usize);
+                    });
+                }
+            }
+        }
+        // ⋮ in selection mode: the picked downloads' menu (the rest of the commands are at the
+        // drawer's bottom).
         if picking && bar_button(ui, more_at, "phone-more", Glyph::More) {
             let at = winui::rect(more_at).left_bottom();
-            // In selection mode, the picked downloads' menu (Open, Move, Properties...).
             // (A picked download's menu acts on every one picked.)
-            let popup = if picking {
-                Popup::Item(self.selection.ids().first().copied())
-            } else {
-                Popup::PhoneMore
-            };
-            self.open_popup_asked(popup, at, &ctx);
+            self.open_popup_asked(Popup::Item(self.selection.ids().first().copied()), at, &ctx);
         }
+        // Back ends the search (a menu over it closes first), and the search ends with it.
+        if searching
+            && self.popup.is_none()
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            searching = false;
+        }
+        if !searching
+            && ctx
+                .data(|d| d.get_temp::<bool>(search_id()))
+                .unwrap_or(false)
+        {
+            set_name_filter(&mut self.list, "");
+        }
+        ctx.data_mut(|d| d.insert_temp(search_id(), searching));
         ctx.data_mut(|d| d.insert_temp(picking_id(), picking));
 
         // The bottom bar: the commands used most; in selection mode, those for the downloads
@@ -533,6 +591,7 @@ impl App {
                 if let Some((_, _, serial)) = self.popup {
                     ctx.data_mut(|d| {
                         d.insert_temp(egui::Id::unique(("phone-menu-path", serial)), vec![k]);
+                        d.insert_temp(egui::Id::unique(("phone-menu-base", serial)), 1usize);
                     });
                 }
             }
@@ -572,8 +631,14 @@ impl App {
             egui::vec2(at.width() - 24.0, 58.0),
         );
         let screen = winui::rect(card);
-        ui.painter()
-            .rect_filled(screen, 14.0, colors().accent.gamma_multiply(0.10));
+        // The theme's own window colour and line, as the desktop's panels.
+        ui.painter().rect_filled(screen, 14.0, winui::BG());
+        ui.painter().rect_stroke(
+            screen,
+            14.0,
+            egui::Stroke::new(1.0, colors().toolbar_line),
+            egui::StrokeKind::Inside,
+        );
         let (big, small) = if live.is_empty() {
             (
                 crate::i18n::tn(self.items.len() as u64, "{n} download", "{n} downloads"),
@@ -715,6 +780,9 @@ impl App {
                 .unwrap_or(false)
             || ctx
                 .data(|d| d.get_temp::<bool>(picking_id()))
+                .unwrap_or(false)
+            || ctx
+                .data(|d| d.get_temp::<bool>(search_id()))
                 .unwrap_or(false)
     }
 
@@ -941,6 +1009,20 @@ enum RowState {
     Done,
 }
 
+/// Whether the top bar is a search box (kept with the window's memory).
+fn search_id() -> egui::Id {
+    egui::Id::unique("phone-search")
+}
+
+/// The list's File Name filter (the desktop's, `list::Filter::Text`): `query`, or none when
+/// empty.
+fn set_name_filter(list: &mut list::ListState, query: &str) {
+    if list.filters.is_empty() {
+        list.filters.resize(list::COLS, None);
+    }
+    list.filters[0] = (!query.is_empty()).then(|| list::Filter::Text(query.to_owned()));
+}
+
 /// Whether the list is in selection mode (kept with the window's memory).
 fn picking_id() -> egui::Id {
     egui::Id::unique("phone-picking")
@@ -1026,11 +1108,11 @@ fn phone_list(
                     colors().text,
                 );
                 // Its status in its colour, then its figures.
+                // MDM's own colours: the progress window's status colour while it runs, the
+                // theme's error colour when it failed, the list's muted text otherwise.
                 let status_color = match row.status_group {
-                    "Downloading" => colors().accent,
-                    "Complete" => colors().success,
+                    "Downloading" => colors().status_value,
                     "Error" => colors().error,
-                    "Waiting" => colors().warning,
                     _ => colors().muted,
                 };
                 let figures: Vec<&str> = if state == RowState::Done {
@@ -1064,21 +1146,11 @@ fn phone_list(
                         0.35,
                     );
                     let bar = egui::Rect::from_min_size(
-                        pos2(at.min.x + text_x, at.min.y + 39.0),
-                        egui::vec2(text_w, 6.0),
+                        pos2(at.min.x + text_x, at.min.y + 37.0),
+                        egui::vec2(text_w, 9.0),
                     );
-                    ui.painter()
-                        .rect_filled(winui::rect(bar), 3.0, colors().progress_track);
-                    let filled = egui::Rect::from_min_size(
-                        bar.min,
-                        egui::vec2(bar.width() * shown, bar.height()),
-                    );
-                    let fill = if state == RowState::Running {
-                        colors().progress_bar
-                    } else {
-                        colors().muted
-                    };
-                    ui.painter().rect_filled(winui::rect(filled), 3.0, fill);
+                    // The desktop's progress bar (its theme's meter).
+                    winui::meter(ui.painter(), winui::rect(bar), shown);
                 }
                 ui.painter().hline(
                     winui::rect(at.with_min_x(at.min.x + text_x)).x_range(),
@@ -1206,7 +1278,7 @@ fn ripple(ui: &Ui, screen: egui::Rect, r: &egui::Response) {
 /// clockwise.
 fn ring(ui: &Ui, c: Pos2, radius: f32, frac: f32) {
     let p = ui.painter();
-    p.circle_stroke(c, radius, egui::Stroke::new(4.0, colors().progress_track));
+    p.circle_stroke(c, radius, egui::Stroke::new(4.0, colors().meter_track));
     if frac <= 0.0 {
         return;
     }
@@ -1220,7 +1292,7 @@ fn ring(ui: &Ui, c: Pos2, radius: f32, frac: f32) {
         .collect();
     p.add(egui::Shape::line(
         points,
-        egui::Stroke::new(4.0, colors().progress_bar),
+        egui::Stroke::new(4.0, colors().meter_fill),
     ));
 }
 
@@ -1246,36 +1318,16 @@ fn check_circle(ui: &Ui, id: egui::Id, screen: egui::Rect, on: bool) {
     }
 }
 
-/// A row's own round button at `screen`: Pause (two bars) or Resume (a triangle).
+/// A row's own round button at `screen`: the toolbar's Stop (while it runs) or Resume icon.
 fn row_button(ui: &Ui, screen: egui::Rect, pause: bool, r: &egui::Response) {
-    let p = ui.painter();
     let c = screen.center();
     if r.is_pointer_button_down_on() {
-        p.circle_filled(c, 20.0, colors().toolbar_pressed);
+        ui.painter()
+            .circle_filled(c, 20.0, colors().toolbar_pressed);
     }
-    p.circle_stroke(c, 15.0, egui::Stroke::new(1.5, colors().progress_bar));
-    let ink = colors().progress_bar;
-    if pause {
-        for dx in [-3.5, 3.5] {
-            p.rect_filled(
-                egui::Rect::from_center_size(c + egui::vec2(dx, 0.0), egui::vec2(3.0, 11.0)),
-                1.0,
-                ink,
-            );
-        }
-    } else {
-        // Pointing the way the text reads.
-        let d = if winui::rtl() { -1.0 } else { 1.0 };
-        p.add(egui::Shape::convex_polygon(
-            vec![
-                c + egui::vec2(-4.0 * d, -6.5),
-                c + egui::vec2(6.5 * d, 0.0),
-                c + egui::vec2(-4.0 * d, 6.5),
-            ],
-            ink,
-            egui::Stroke::NONE,
-        ));
-    }
+    let icon = if pause { Icon::Stop } else { Icon::Resume };
+    icon.image(true)
+        .paint_at(ui, egui::Rect::from_center_size(c, egui::vec2(24.0, 24.0)));
     winui::expose(
         r,
         egui::Role::Button,
@@ -1377,6 +1429,10 @@ enum Glyph {
     Close,
     /// A box with a tick in it: Select all (selection mode).
     SelectAll,
+    /// A magnifying glass: search the list.
+    Search,
+    /// Three lines, shorter and shorter: sort the list (Arrange files).
+    Sort,
 }
 
 /// A square button of the top bar at English `at`; true when tapped.
@@ -1406,6 +1462,20 @@ fn bar_button(
         Glyph::More => {
             for dy in [-6.0, 0.0, 6.0] {
                 p.circle_filled(c + egui::vec2(0.0, dy), 2.0, ink);
+            }
+        }
+        Glyph::Search => {
+            let stroke = egui::Stroke::new(2.0, ink);
+            p.circle_stroke(c + egui::vec2(-2.0, -2.0), 6.5, stroke);
+            p.line_segment([c + egui::vec2(3.0, 3.0), c + egui::vec2(8.0, 8.0)], stroke);
+        }
+        Glyph::Sort => {
+            let stroke = egui::Stroke::new(2.0, ink);
+            for (dy, w) in [(-6.0, 9.0), (0.0, 6.0), (6.0, 3.0)] {
+                p.line_segment(
+                    [c + egui::vec2(-9.0, dy), c + egui::vec2(-9.0 + 2.0 * w, dy)],
+                    stroke,
+                );
             }
         }
         Glyph::SelectAll => {
@@ -1488,6 +1558,10 @@ fn menu_sheet<C: Clone>(
 ) -> PopupResult<C> {
     let ctx = ui.ctx().clone();
     let path_id = egui::Id::unique(("phone-menu-path", serial));
+    // Opened on a submenu (the sort button, a submenu from the drawer): this many levels in,
+    // where going back closes it.
+    let base_id = egui::Id::unique(("phone-menu-base", serial));
+    let base: usize = ctx.data(|d| d.get_temp(base_id)).unwrap_or(0);
     let mut path: Vec<usize> = ctx.data(|d| d.get_temp(path_id)).unwrap_or_default();
     // The entries of the open submenu, and its title.
     let mut here = entries;
@@ -1548,7 +1622,11 @@ fn menu_sheet<C: Clone>(
                     &r,
                 );
                 if r.clicked() {
-                    path.pop();
+                    if path.len() > base {
+                        path.pop();
+                    } else {
+                        result = PopupResult::Dismissed;
+                    }
                 }
             }
             for (k, e) in here.iter().enumerate() {
@@ -1593,7 +1671,7 @@ fn menu_sheet<C: Clone>(
             .is_some_and(|p| sheet.contains(p));
     // Back: out of the submenu, else the menu closes.
     let back = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
-    if back && !path.is_empty() {
+    if back && path.len() > base {
         path.pop();
     } else if back || outside {
         result = PopupResult::Dismissed;
@@ -1601,7 +1679,10 @@ fn menu_sheet<C: Clone>(
     if matches!(result, PopupResult::Open) {
         ctx.data_mut(|d| d.insert_temp(path_id, path));
     } else {
-        ctx.data_mut(|d| d.remove::<Vec<usize>>(path_id));
+        ctx.data_mut(|d| {
+            d.remove::<Vec<usize>>(path_id);
+            d.remove::<usize>(base_id);
+        });
         // A frame without the sheet now: a touch is matched to the last frame's widgets, and
         // the sheet's backdrop would take the next one.
         ctx.request_repaint();
