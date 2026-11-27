@@ -278,6 +278,16 @@ object Opener {
                     ?: throw IllegalStateException("no app on this phone opens it")
                 if (kind == "chooser") Intent.createChooser(view, null) else view
             }
+            // A finished download's file to Android's share sheet.
+            "share" -> {
+                val view = viewIntent(context, target)
+                    ?: throw IllegalStateException("no app on this phone opens it")
+                val send = Intent(Intent.ACTION_SEND)
+                    .setType(view.type)
+                    .putExtra(Intent.EXTRA_STREAM, view.data)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                Intent.createChooser(send, null)
+            }
             else -> throw IllegalArgumentException("unknown kind $kind")
         }
         if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

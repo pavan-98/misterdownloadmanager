@@ -6513,6 +6513,10 @@ menu	Schedule	Schedule
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 menu	Select &all	Select &all
 #. menu command in the main window
+#. verb: sends the downloaded file to another app (Android's share sheet)
+#. the trailing ... means it opens a window: keep it
+menu	Share...	Share...
+#. menu command in the main window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 menu	Show &drop target	Show &drop target
 #. menu command in the main window

@@ -563,6 +563,9 @@ enum Cmd {
     ChooseLanguage,
     Open,
     OpenWith,
+    /// Android's share sheet for a finished download's file (only offered there: the desktop's
+    /// systems have no such sheet MDM can call the same way).
+    ShareFile,
     OpenFolder,
     Properties,
     /// Show or hide a list column (data slot).
@@ -9178,6 +9181,11 @@ impl App {
                     dialogs::open_download_with(&d, moved_away);
                 }
             }
+            Cmd::ShareFile => {
+                if let Some(d) = dest {
+                    dialogs::share_download(&d, moved_away);
+                }
+            }
             Cmd::OpenFolder => {
                 if let Some(d) = dest {
                     dialogs::show_download_in_folder(&d, moved_away);
@@ -10865,6 +10873,15 @@ impl App {
             // i18n: noun: opens the download's Properties window
             I("Properties", Cmd::Properties, sel, false),
         ];
+        // Android: Share..., after Open folder (its share sheet: another app, a message).
+        if cfg!(target_os = "android")
+            && let Some(k) = entries
+                .iter()
+                .position(|e| matches!(e, I(_, Cmd::OpenFolder, ..)))
+        {
+            // i18n: verb: sends the downloaded file to another app (Android's share sheet)
+            entries.insert(k + 1, I("Share...", Cmd::ShareFile, done, false));
+        }
         // A phone (phone.rs) has no double click: a tap opens a download.
         if crate::app::phone::active(&self.ui_ctx)
             && let Some(k) = entries

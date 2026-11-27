@@ -4520,6 +4520,26 @@ pub fn open_download_with(path: &Path, moved_away: bool) {
     });
 }
 
+/// A finished download's file to Android's share sheet (another app, a message, nearby
+/// devices). Android only: the desktop's systems have no share sheet MDM calls this way, and the
+/// menu offers it only there.
+pub fn share_download(path: &Path, moved_away: bool) {
+    let path = path.to_owned();
+    crate::launch::spawn("share", move || {
+        hand_over(&path, moved_away, |p| {
+            #[cfg(target_os = "android")]
+            {
+                crate::android::open_with_system("share", &p.to_string_lossy())
+            }
+            #[cfg(not(target_os = "android"))]
+            {
+                let _ = p;
+                Ok(())
+            }
+        });
+    });
+}
+
 /// [`Duplicate`]'s answer "Add the duplicate with a numbered file name" (as Options numbers it).
 pub const DUPLICATE_NUMBERED: usize = 1;
 /// [`Duplicate`]'s answer "Add the duplicate and overwrite the existing file".
