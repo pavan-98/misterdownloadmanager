@@ -894,6 +894,9 @@ fn link_texts(line: &str) -> String {
 // ---------------------------------------------------------------------------------------------
 // About
 
+/// Who made the Android app, and their GitHub profile: About's credit line there.
+const ANDROID_AUTHOR: (&str, &str) = ("Pavan Kalyan Neerukonda", "https://github.com/pavan-98");
+
 pub struct About;
 
 impl About {
@@ -955,26 +958,25 @@ impl About {
                     "about-text",
                     about,
                 );
-                #[allow(unused_mut)]
                 let mut below = o.y + 72.0 + 13.0 * lines as f32;
-                // The Android app's author, in the app it credits (the maintainer's offer).
-                #[cfg(target_os = "android")]
-                {
-                    let credit = crate::i18n::fmt(
-                        // i18n: {author}: the name of the person who made the Android app
-                        crate::i18n::t("The Android app: {author}"),
-                        &[("author", "Pavan Kalyan Neerukonda")],
-                    );
-                    let more = winui::paragraph(
-                        &p,
-                        o.x + 80.0,
-                        below + 6.0,
-                        &credit,
-                        winui::MUTED(),
-                        o.x + 404.0,
-                        13.0,
-                    );
-                    below += 6.0 + 13.0 * more as f32;
+                // The Android app's author, in the app it credits (the maintainer's offer), their
+                // name a link to their GitHub profile. On Android (and in the phone's preview on a
+                // desktop, MDM_PHONE).
+                if cfg!(target_os = "android") || crate::app::phone::active(ui.ctx()) {
+                    // i18n: {author}: the name of the person who made the Android app (shown as a link)
+                    let template = crate::i18n::t("The Android app: {author}");
+                    let (before, after) = template.split_once("{author}").unwrap_or((template, ""));
+                    let base = below + 6.0;
+                    let mut x = o.x + 80.0;
+                    winui::text(&p, x, base, before, winui::MUTED());
+                    x += winui::text_width(&p, before);
+                    let name = ANDROID_AUTHOR.0;
+                    if winui::link(ui, &p, x, base, name, "android-author") {
+                        crate::launch::open(ANDROID_AUTHOR.1);
+                    }
+                    x += winui::text_width(&p, name);
+                    winui::text(&p, x, base, after, winui::MUTED());
+                    below += 6.0 + 13.0;
                 }
                 // The links in a row, 18 px apart; one that would pass the paragraph's right
                 // edge (a long translation) starts the next row.
