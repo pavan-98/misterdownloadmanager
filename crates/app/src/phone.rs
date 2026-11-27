@@ -631,14 +631,31 @@ impl App {
         // A row's menu, the "more" menu, a node's: the desktop's entries, in a sheet from the
         // bottom with rows a finger can hit ([`menu_sheet`]).
         if let Some((kind, _, serial)) = self.popup {
-            let (entries, target) = self.popup_entries(kind);
-            match menu_sheet(ui, full, &entries, serial) {
-                PopupResult::Open | PopupResult::Neighbor(_) => {}
-                PopupResult::Chosen(c) => {
-                    chosen = Some((c, target));
-                    self.popup = None;
+            // Closing, it slides down for a moment (taking no touches); what was chosen runs
+            // at once.
+            let leave_key = egui::Id::unique(("phone-menu-leave", serial));
+            let now = ctx.input(|i| i.time);
+            let leaving = ctx
+                .data(|d| d.get_temp::<f64>(leave_key))
+                .map(|since| ((now - since) / MENU_LEAVE) as f32);
+            if leaving.is_some_and(|t| t >= 1.0) {
+                self.popup = None;
+                ctx.data_mut(|d| d.remove::<f64>(leave_key));
+                ctx.request_repaint();
+            } else {
+                let (entries, target) = self.popup_entries(kind);
+                let leave = |ctx: &egui::Context| {
+                    ctx.data_mut(|d| d.insert_temp(leave_key, now));
+                    ctx.request_repaint();
+                };
+                match menu_sheet(ui, full, &entries, serial, leaving.unwrap_or(0.0)) {
+                    PopupResult::Open | PopupResult::Neighbor(_) => {}
+                    PopupResult::Chosen(c) => {
+                        chosen = Some((c, target));
+                        leave(&ctx);
+                    }
+                    PopupResult::Dismissed => leave(&ctx),
                 }
-                PopupResult::Dismissed => self.popup = None,
             }
         }
         if let Some((c, target)) = chosen {
@@ -1596,6 +1613,9 @@ fn bottom_button(ui: &mut Ui, at: egui::Rect, icon: Icon, label: &str, enabled: 
     enabled && r.clicked()
 }
 
+/// How long the menu sheet takes to slide away as it closes (seconds).
+const MENU_LEAVE: f64 = 0.18;
+
 /// A menu row's height in the sheet: Android's list item.
 const MENU_ROW_H: f32 = 48.0;
 
@@ -1608,6 +1628,7 @@ fn menu_sheet<C: Clone>(
     full: egui::Rect,
     entries: &[MenuEntry<C>],
     serial: u64,
+    leaving: f32,
 ) -> PopupResult<C> {
     let ctx = ui.ctx().clone();
     let path_id = egui::Id::unique(("phone-menu-path", serial));
@@ -1631,13 +1652,21 @@ fn menu_sheet<C: Clone>(
     let rows = here.len() + usize::from(title.is_some());
     let height = (rows as f32 * MENU_ROW_H + 16.0).min(full.height() * 0.85);
     // Opening, it rises from the bottom as the window behind it dims.
-    let shown = entrance(&ctx, egui::Id::unique(("phone-menu", serial)), 0.22);
+    // Closing (`leaving` from 0 to 1): it slides back down as the window behind brightens,
+    // and takes no touches.
+    let shown = entrance(&ctx, egui::Id::unique(("phone-menu", serial)), 0.22)
+        * (1.0 - (leaving.clamp(0.0, 1.0)).powi(2));
+    let live = leaving <= 0.0;
     let sheet = egui::Rect::from_min_max(pos2(full.min.x, full.max.y - height), full.max)
         .translate(egui::vec2(0.0, height * (1.0 - shown)));
     let scrim = ui.interact(
         full,
         egui::Id::unique(("phone-menu-scrim", serial)),
-        egui::Sense::click(),
+        if live {
+            egui::Sense::click()
+        } else {
+            egui::Sense::hover()
+        },
     );
     ui.painter().rect_filled(
         full,
@@ -1663,8 +1692,14 @@ fn menu_sheet<C: Clone>(
         .show(&mut inside, |ui| {
             let width = ui.max_rect().width();
             if let Some(title) = title {
-                let (at, r) =
-                    ui.allocate_exact_size(egui::vec2(width, MENU_ROW_H), egui::Sense::click());
+                let (at, r) = ui.allocate_exact_size(
+                    egui::vec2(width, MENU_ROW_H),
+                    if live {
+                        egui::Sense::click()
+                    } else {
+                        egui::Sense::hover()
+                    },
+                );
                 menu_row(
                     ui,
                     at,
@@ -1700,7 +1735,7 @@ fn menu_sheet<C: Clone>(
                     MenuEntry::Sub(l, en, _) => (*l, *en, false, true),
                     MenuEntry::Sep => unreachable!(),
                 };
-                let sense = if enabled {
+                let sense = if enabled && live {
                     egui::Sense::click()
                 } else {
                     egui::Sense::hover()
@@ -1723,7 +1758,7 @@ fn menu_sheet<C: Clone>(
             .interact_pointer_pos()
             .is_some_and(|p| sheet.contains(p));
     // Back: out of the submenu, else the menu closes.
-    let back = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+    let back = live && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
     if back && path.len() > base {
         path.pop();
     } else if back || outside {
