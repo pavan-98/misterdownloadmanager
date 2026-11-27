@@ -2653,34 +2653,48 @@ fn segment_bar(p: &egui::Painter, o: Pos2, item: &Item, segments: &[(u64, f64)])
     }
 }
 
-/// A phone's split view at screen `at`: a rounded track, each connection's part filled from
-/// where it started as far as it got, its start marked.
+/// A phone's split view at screen `at`: the desktop's segment bar's colours (its middle row's)
+/// in a rounded frame: each connection's part filled from where it started as far as it got,
+/// its start marked, all inside the frame.
 fn phone_segments(p: &egui::Painter, at: egui::Rect, item: &Item, segments: &[(u64, f64)]) {
     let colors = crate::theme::colors();
-    p.rect_filled(at, 3.0, colors.progress_track);
-    let Some(total) = item.size.filter(|t| *t > 0) else {
-        return;
-    };
-    let w = f64::from(at.width());
-    let x = |col: f32| {
-        if winui::rtl() {
-            at.max.x - col
-        } else {
-            at.min.x + col
+    let s = &colors.segments;
+    let (missing, done, start) = (s.missing[6], s.done[6], s.start[6]);
+    let radius = (at.height() / 4.0).floor();
+    p.rect_filled(at, radius, missing);
+    let inner = at.shrink(1.0);
+    let clip = p.with_clip_rect(inner.intersect(p.clip_rect()));
+    if let Some(total) = item.size.filter(|t| *t > 0) {
+        let w = f64::from(inner.width());
+        let x = |col: f32| {
+            let col = col.clamp(0.0, inner.width());
+            if winui::rtl() {
+                inner.max.x - col
+            } else {
+                inner.min.x + col
+            }
+        };
+        for &(first, got) in segments {
+            if let Some((a, b)) = segment_columns(first, got, total, w) {
+                let (l, r) = (x(a - 1.0), x(b + 1.0));
+                clip.rect_filled(
+                    egui::Rect::from_x_y_ranges(l.min(r)..=l.max(r), inner.y_range()),
+                    0.0,
+                    done,
+                );
+            }
+            // Its start: a mark a line wide, kept inside the frame.
+            let col = (first as f64 / total as f64 * w) as f32;
+            let sx = x(col.max(1.0).min(inner.width() - 1.0));
+            clip.vline(sx, inner.y_range(), egui::Stroke::new(2.0, start));
         }
-    };
-    for &(start, done) in segments {
-        if let Some((a, b)) = segment_columns(start, done, total, w) {
-            let (l, r) = (x(a - 1.0), x(b + 1.0));
-            p.rect_filled(
-                egui::Rect::from_x_y_ranges(l.min(r)..=l.max(r), at.y_range()),
-                0.0,
-                colors.progress_bar,
-            );
-        }
-        let sx = x((start as f64 / total as f64 * w) as f32);
-        p.vline(sx, at.y_range(), egui::Stroke::new(1.5, colors.text));
     }
+    p.rect_stroke(
+        at,
+        radius,
+        egui::Stroke::new(1.0, colors.segment_border),
+        egui::StrokeKind::Inside,
+    );
 }
 
 /// The Pause button's label and kind: a live stream being recorded is stopped and saved (still
