@@ -1433,6 +1433,9 @@ pub struct App {
     lang_picker: Option<crate::langpick::Picker>,
     /// The video helpers' offer (the first start's, after the language).
     helpers: Option<crate::helpers::Helpers>,
+    /// The Helpers window (yt-dlp, ffmpeg, gallery-dl) opened from a phone's Options list; on
+    /// the desktop Download video's Helpers... opens it.
+    programs: Option<crate::helpers::Programs>,
     /// "Files already there", opened on its own by `/show existing-files` (screenshots and the
     /// translations' fit check); Add torrent asks it itself.
     shown_existing: Option<crate::dialogs::ExistingFiles>,
@@ -2319,6 +2322,7 @@ impl App {
             tell_friend: None,
             lang_picker: None,
             helpers: None,
+            programs: None,
             shown_existing: None,
             extension: None,
             extension_weighed: false,
@@ -13375,6 +13379,21 @@ impl App {
             && !matches!(d.show(ctx, &self.rt), Outcome::Open)
         {
             self.helpers = None;
+        }
+        if self
+            .options
+            .as_mut()
+            .is_some_and(|o| o.take_programs_asked())
+            && self.programs.is_none()
+        {
+            self.programs = Some(crate::helpers::Programs::new());
+        }
+        if let Some(d) = &mut self.programs {
+            if !matches!(d.show(ctx, &self.rt), Outcome::Open) {
+                self.programs = None;
+            }
+            // Its Back (Escape) was its own: Options, under it, doesn't close with it.
+            ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         }
         if let Some(q) = &mut self.shown_existing
             && !matches!(q.show(ctx), Outcome::Open)

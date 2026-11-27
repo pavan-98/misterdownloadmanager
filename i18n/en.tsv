@@ -2415,7 +2415,8 @@
 #. text in crashui.rs
 #. crash report window heading: MDM crashed and is gone
 	Mister Download Manager closed unexpectedly	Mister Download Manager closed unexpectedly
-#. window title in the Options window
+#. text in the Options window
+#. window title: the Options window
 	Mister Download Manager Configuration	Mister Download Manager Configuration
 #. text in crashui.rs
 	Mister Download Manager crash report	Mister Download Manager crash report

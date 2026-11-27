@@ -1027,7 +1027,10 @@ impl Programs {
             "video-helpers",
             // i18n: window title: where MDM takes its helper programs (yt-dlp, ffmpeg, gallery-dl) from
             "Helpers",
-            [500.0, 402.0],
+            [
+                500.0,
+                402.0 + crate::app::phone::phone_buttons_extra(ctx, 1),
+            ],
             false,
             winui::BG(),
             |ui, o| self.body(ui, o, rt),
@@ -1340,6 +1343,15 @@ impl Programs {
             })
             .collect();
         let y = 370.0;
+        // A phone: the two big across the page.
+        let (check_r, close_r) = crate::app::phone::pair_or(
+            ui.ctx(),
+            o,
+            y,
+            500.0,
+            r(o, check_at.0, y, check_at.1, 21.0),
+            r(o, close_at.0, y, close_at.1, 21.0),
+        );
         // What failed, left of the buttons.
         if let Some(e) = &self.error {
             let rc = winui::fit(
@@ -1356,7 +1368,7 @@ impl Programs {
         }
         if winui::button(
             ui,
-            r(o, check_at.0, y, check_at.1, 21.0),
+            check_r,
             // i18n: Helpers: button: look for newer versions of MDM's own helpers now, and install them
             "Check for updates",
             if own.is_empty() || self.busy() || self.any_update_running() {
@@ -1372,14 +1384,7 @@ impl Programs {
         {
             self.update(own, dir, rt, ui.ctx());
         }
-        let close = winui::button(
-            ui,
-            r(o, close_at.0, y, close_at.1, 21.0),
-            "Close",
-            ButtonKind::Default,
-            false,
-            None,
-        );
+        let close = winui::button(ui, close_r, "Close", ButtonKind::Default, false, None);
         if close.clicked() || winui::escape_pressed(ui) || winui::enter_pressed(ui) {
             Outcome::Done(())
         } else {

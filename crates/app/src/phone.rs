@@ -79,7 +79,28 @@ pub(crate) fn sheet<R>(
                 egui::Stroke::new(1.0, colors().toolbar_line),
             );
             let close_at = egui::Rect::from_min_size(top.min, egui::vec2(BAR_H, BAR_H));
-            let closed = bar_button(ui, close_at, id.with("close"), Glyph::Close);
+            // A page within the window ([`sheet_back`]): ←, which goes back (as Back does).
+            let back = ctx
+                .data_mut(|d| d.remove_temp::<bool>(sheet_back_key()))
+                .is_some();
+            let tapped = bar_button(
+                ui,
+                close_at,
+                id.with(("close", back)),
+                if back { Glyph::Back } else { Glyph::Close },
+            );
+            if tapped && back {
+                ui.ctx().input_mut(|i| {
+                    i.events.push(egui::Event::Key {
+                        key: egui::Key::Escape,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    });
+                });
+            }
+            let closed = tapped && !back;
             let tx = close_at.max.x + 4.0;
             let shown = elide(ui, title, font_bold(18.0), top.max.x - PAD - tx);
             ui.painter().text(
@@ -244,6 +265,16 @@ fn fit_key() -> egui::Id {
 pub(crate) fn to_screen(ctx: &egui::Context, p: Pos2) -> Pos2 {
     ctx.data(|d| d.get_temp::<egui::emath::TSTransform>(fit_key()))
         .map_or(p, |t| t * p)
+}
+
+fn sheet_back_key() -> egui::Id {
+    egui::Id::unique("phone-sheet-back")
+}
+
+/// The next [`sheet`] drawn shows ← instead of ×: a page within its window (an Options
+/// section's), which goes back to where it came from (it gets Escape, as from Back).
+pub(crate) fn sheet_back(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.insert_temp(sheet_back_key(), true));
 }
 
 /// Whether the main window takes the phone's layout now.
@@ -1427,6 +1458,8 @@ enum Glyph {
     More,
     /// A cross: closes the page ([`sheet`]).
     Close,
+    /// An arrow pointing back: a page within a window goes back ([`sheet_back`]).
+    Back,
     /// A box with a tick in it: Select all (selection mode).
     SelectAll,
     /// A magnifying glass: search the list.
@@ -1463,6 +1496,26 @@ fn bar_button(
             for dy in [-6.0, 0.0, 6.0] {
                 p.circle_filled(c + egui::vec2(0.0, dy), 2.0, ink);
             }
+        }
+        Glyph::Back => {
+            let stroke = egui::Stroke::new(2.0, ink);
+            // Pointing the way back: left, or right in a right-to-left interface.
+            let d = if winui::rtl() { -1.0 } else { 1.0 };
+            p.line_segment(
+                [c + egui::vec2(-8.0 * d, 0.0), c + egui::vec2(8.0 * d, 0.0)],
+                stroke,
+            );
+            p.line_segment(
+                [
+                    c + egui::vec2(-8.0 * d, 0.0),
+                    c + egui::vec2(-1.5 * d, -6.5),
+                ],
+                stroke,
+            );
+            p.line_segment(
+                [c + egui::vec2(-8.0 * d, 0.0), c + egui::vec2(-1.5 * d, 6.5)],
+                stroke,
+            );
         }
         Glyph::Search => {
             let stroke = egui::Stroke::new(2.0, ink);

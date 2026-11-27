@@ -254,6 +254,9 @@ pub struct OptionsDialog {
     page: usize,
     /// A phone (phone.rs): a section's page is open, else the list of sections is shown.
     phone_section: bool,
+    /// A phone's list of sections asked for the Helpers window (yt-dlp, ffmpeg, gallery-dl): the
+    /// app opens it ([`Self::take_programs_asked`]).
+    programs_asked: bool,
     /// The browsers check list's scroll and selection.
     browser_rows: winui::RowList,
     category: usize,
@@ -405,6 +408,7 @@ impl OptionsDialog {
             s,
             page: 0,
             phone_section: false,
+            programs_asked: false,
             category: 0,
             exc_rows: Default::default(),
             login_rows: Default::default(),
@@ -444,7 +448,8 @@ impl OptionsDialog {
         let phone = crate::app::phone::active(ctx);
         let listing = phone && !self.phone_section;
         let client = if listing {
-            let rows = PHONE_SECTIONS.len() as f32;
+            // The sections, and Helpers after them.
+            let rows = PHONE_SECTIONS.len() as f32 + 1.0;
             [
                 crate::app::phone::sheet_width(ctx),
                 rows * PHONE_ROW + 16.0 + 60.0,
@@ -456,87 +461,87 @@ impl OptionsDialog {
         } else {
             [430.0, 506.0]
         };
-        let outcome = window(
-            ctx,
-            "options",
-            "Mister Download Manager Configuration",
-            client,
-            false,
-            LIGHT_BG(),
-            |ui, o| {
-                if listing {
-                    return self.phone_list(ui, o, client[0]);
-                }
-                let o = if phone {
-                    o - vec2(PHONE_PAGE_SHIFT, 0.0)
-                } else {
-                    o
-                };
-                if phone {
-                    // The section's name over its page, where the tabs were: a tap, or Back,
-                    // goes back to the list.
-                    if phone_back(ui, o, self.page) || winui::take_key(ui, egui::Key::Escape) {
-                        self.phone_section = false;
-                        return Outcome::Open;
-                    }
-                }
-                // Ctrl+Tab through the pages in the tabs' order (Archives, 10, came last).
-                const ORDER: [usize; 12] = [0, 1, 2, 3, 4, 11, 5, 6, 7, 8, 9, 10];
-                let at = ORDER.iter().position(|p| *p == self.page).unwrap_or(0);
-                let by_key = winui::tab_keys(ui, ORDER.len(), at).map(|i| ORDER[i]);
-                let tabbed = if phone { None } else { tabs(ui, o, self.page) };
-                if let Some(p) = tabbed.or(by_key) {
-                    self.page = p;
-                }
-                match self.page {
-                    0 => self.general(ui, o),
-                    1 => self.file_types(ui, o),
-                    2 => self.save_to(ui, o, downloads),
-                    3 => self.downloads(ui, o),
-                    4 => self.connection(ui, o),
-                    5 => self.proxy(ui, o),
-                    6 => self.logins(ui, o),
-                    7 => self.accounts(ui, o),
-                    9 => self.regional(ui, o),
-                    10 => self.archives(ui, o),
-                    REMOTE_PAGE => self.remote_page(ui, o),
-                    8 => self.sounds(ui, o),
-                    _ => self.regional(ui, o),
-                }
-                // A phone's OK is under its list of sections (`phone_list`).
-                let ok = !phone
-                    && winui::button_light(
-                        ui,
-                        r(o, 269.0, 477.0, 73.0, 21.0),
-                        "OK",
-                        ButtonKind::Default,
-                        false,
-                    )
-                    .clicked();
-                if !phone
-                    && winui::button_light(
-                        ui,
-                        r(o, 350.0, 477.0, 73.0, 21.0),
-                        // i18n: noun: button that opens the help
-                        "Help",
-                        ButtonKind::Normal,
-                        false,
-                    )
-                    .clicked()
-                {
-                    crate::help::open_page("options.md");
-                }
-                if modal {
-                    Outcome::Open
-                } else if winui::escape_pressed(ui) {
-                    Outcome::Closed
-                } else if ok || winui::enter_pressed(ui) {
-                    Outcome::Done(())
-                } else {
-                    Outcome::Open
-                }
-            },
-        );
+        // A section's page on a phone: its name in the top bar, with ← back to the list.
+        let title = if phone && !listing {
+            crate::app::phone::sheet_back(ctx);
+            PHONE_SECTIONS
+                .iter()
+                .find(|(p, _)| *p == self.page)
+                .map_or("General", |(_, l)| *l)
+        } else {
+            // i18n: window title: the Options window
+            "Mister Download Manager Configuration"
+        };
+        let outcome = window(ctx, "options", title, client, false, LIGHT_BG(), |ui, o| {
+            if listing {
+                return self.phone_list(ui, o, client[0]);
+            }
+            let o = if phone {
+                o - vec2(PHONE_PAGE_SHIFT, 0.0)
+            } else {
+                o
+            };
+            // A phone: ← in the top bar, or Back, goes back to the list.
+            if phone && winui::take_key(ui, egui::Key::Escape) {
+                self.phone_section = false;
+                return Outcome::Open;
+            }
+            // Ctrl+Tab through the pages in the tabs' order (Archives, 10, came last).
+            const ORDER: [usize; 12] = [0, 1, 2, 3, 4, 11, 5, 6, 7, 8, 9, 10];
+            let at = ORDER.iter().position(|p| *p == self.page).unwrap_or(0);
+            let by_key = winui::tab_keys(ui, ORDER.len(), at).map(|i| ORDER[i]);
+            let tabbed = if phone { None } else { tabs(ui, o, self.page) };
+            if let Some(p) = tabbed.or(by_key) {
+                self.page = p;
+            }
+            match self.page {
+                0 => self.general(ui, o),
+                1 => self.file_types(ui, o),
+                2 => self.save_to(ui, o, downloads),
+                3 => self.downloads(ui, o),
+                4 => self.connection(ui, o),
+                5 => self.proxy(ui, o),
+                6 => self.logins(ui, o),
+                7 => self.accounts(ui, o),
+                9 => self.regional(ui, o),
+                10 => self.archives(ui, o),
+                REMOTE_PAGE => self.remote_page(ui, o),
+                8 => self.sounds(ui, o),
+                _ => self.regional(ui, o),
+            }
+            // A phone's OK is under its list of sections (`phone_list`).
+            let ok = !phone
+                && winui::button_light(
+                    ui,
+                    r(o, 269.0, 477.0, 73.0, 21.0),
+                    "OK",
+                    ButtonKind::Default,
+                    false,
+                )
+                .clicked();
+            if !phone
+                && winui::button_light(
+                    ui,
+                    r(o, 350.0, 477.0, 73.0, 21.0),
+                    // i18n: noun: button that opens the help
+                    "Help",
+                    ButtonKind::Normal,
+                    false,
+                )
+                .clicked()
+            {
+                crate::help::open_page("options.md");
+            }
+            if modal {
+                Outcome::Open
+            } else if winui::escape_pressed(ui) {
+                Outcome::Closed
+            } else if ok || winui::enter_pressed(ui) {
+                Outcome::Done(())
+            } else {
+                Outcome::Open
+            }
+        });
         if self.sub.is_some() {
             self.sub_dialog(ctx);
         }
@@ -5374,16 +5379,27 @@ const PHONE_ROW: f32 = 52.0;
 const PHONE_PAGE_SHIFT: f32 = 9.0;
 
 impl OptionsDialog {
+    /// Whether the phone's list asked for the Helpers window since the last call.
+    pub fn take_programs_asked(&mut self) -> bool {
+        std::mem::take(&mut self.programs_asked)
+    }
+
     /// A phone's Options (phone.rs): its sections as rows a finger can hit, each opening its page
     /// ([`PHONE_SECTIONS`]); OK and Cancel under them.
     fn phone_list(&mut self, ui: &mut Ui, o: Pos2, width: f32) -> Outcome<()> {
         let p = ui.painter().clone();
         let mut y = 8.0;
-        for (page, label) in PHONE_SECTIONS {
+        // The sections, then Helpers (yt-dlp, ffmpeg, gallery-dl: a window of its own, as on
+        // the desktop, where Download video's Helpers... opens it).
+        let rows = PHONE_SECTIONS
+            .iter()
+            .map(|(p, l)| (Some(*p), *l))
+            .chain([(None, "Helpers")]);
+        for (page, label) in rows {
             let row = r(o, 0.0, y, width, PHONE_ROW);
             let resp = ui.interact(
                 row,
-                egui::Id::unique(("options-section", page)),
+                egui::Id::unique(("options-section", label)),
                 egui::Sense::click(),
             );
             if resp.is_pointer_button_down_on() {
@@ -5413,8 +5429,13 @@ impl OptionsDialog {
                 egui::Stroke::new(1.0, winui::HEADER_LINE()),
             );
             if resp.clicked() {
-                self.page = page;
-                self.phone_section = true;
+                match page {
+                    Some(page) => {
+                        self.page = page;
+                        self.phone_section = true;
+                    }
+                    None => self.programs_asked = true,
+                }
             }
             y += PHONE_ROW;
         }
@@ -5444,38 +5465,6 @@ impl OptionsDialog {
             Outcome::Open
         }
     }
-}
-
-/// On a phone, over a section's page where the tabs were: "‹ Section", which goes back to the
-/// list of sections. True when tapped.
-fn phone_back(ui: &mut Ui, o: Pos2, page: usize) -> bool {
-    let label = PHONE_SECTIONS
-        .iter()
-        .find(|(p, _)| *p == page)
-        .map_or("General", |(_, l)| *l);
-    let row = r(
-        o,
-        PHONE_PAGE_SHIFT,
-        0.0,
-        430.0 - 2.0 * PHONE_PAGE_SHIFT,
-        40.0,
-    );
-    let resp = ui.interact(row, egui::Id::unique("options-back"), egui::Sense::click());
-    let text = format!(
-        "{}  {}",
-        if crate::i18n::rtl() { "›" } else { "‹" },
-        crate::i18n::t(label)
-    );
-    winui::expose(&resp, egui::Role::Button, &text, true, None);
-    winui::text_font(
-        &ui.painter().clone(),
-        egui::FontId::new(16.0, winui::tahoma().family),
-        o.x + PHONE_PAGE_SHIFT + 12.0,
-        o.y + 26.0,
-        &text,
-        winui::TEXT(),
-    );
-    resp.clicked()
 }
 
 fn tabs(ui: &mut Ui, o: Pos2, page: usize) -> Option<usize> {
